@@ -137,6 +137,19 @@ curl -s -X POST "$BASE_URL/alerts" \
     "message": "High latency detected on instance ing_001"
   }'
 
+
+echo "  → Instance-level alert"
+curl -s -X POST "$BASE_URL/alerts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_namespace": "MetaSetter",
+    "service_name": "ingester",
+    "instance_id": "ing_001",
+    "severity": "warning",
+    "message": "High CPU detected on instance ing_001"
+  }'
+
+
 # Alert for service (no instance)
 echo "  → Service-level alert"
 curl -s -X POST "$BASE_URL/alerts" \
