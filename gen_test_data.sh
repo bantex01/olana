@@ -21,7 +21,6 @@ curl -s -X POST "$BASE_URL/telemetry" \
   -d '{
     "service_namespace": "MetaSetter",
     "service_name": "ingester",
-    "instance_id": "ing_001",
     "environment": "prod",
     "team": "SRE",
     "component_type": "service",
@@ -33,7 +32,6 @@ curl -s -X POST "$BASE_URL/telemetry" \
   -d '{
     "service_namespace": "MetaSetter",
     "service_name": "ingester",
-    "instance_id": "ing_002",
     "environment": "prod",
     "team": "SRE",
     "component_type": "service",
@@ -46,7 +44,6 @@ curl -s -X POST "$BASE_URL/telemetry" \
   -d '{
     "service_namespace": "MetaSetter",
     "service_name": "parser",
-    "instance_id": "parser_001",
     "environment": "prod",
     "team": "SRE",
     "component_type": "service",
@@ -58,7 +55,6 @@ curl -s -X POST "$BASE_URL/telemetry" \
   -d '{
     "service_namespace": "MetaSetter",
     "service_name": "parser",
-    "instance_id": "parser_002",
     "environment": "prod",
     "team": "SRE",
     "component_type": "service",
@@ -87,7 +83,6 @@ curl -s -X POST "$BASE_URL/telemetry" \
   -d '{
     "service_namespace": "CORE",
     "service_name": "payment_api",
-    "instance_id": "pay_001",
     "environment": "prod",
     "team": "payments",
     "component_type": "api",
@@ -101,7 +96,6 @@ curl -s -X POST "$BASE_URL/telemetry" \
   -d '{
     "service_namespace": "CORE",
     "service_name": "payment_api",
-    "instance_id": "pay_002",
     "environment": "prod",
     "team": "payments",
     "component_type": "api",

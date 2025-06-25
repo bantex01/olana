@@ -8,7 +8,7 @@ app.use(express.json());
 type Telemetry = {
   service_namespace: string;
   service_name: string;
-  instance_id?: string; // Now optional
+  // Removed: instance_id
   environment: string;
   team: string;
   component_type: string;
@@ -18,7 +18,7 @@ type Telemetry = {
 type Alert = {
   service_namespace: string;
   service_name: string;
-  instance_id?: string; // Now optional
+  instance_id?: string; // Keep for alert context only
   severity: "fatal" | "critical" | "warning" | "none";
   message: string;
 };
@@ -28,7 +28,19 @@ const alertStore: Alert[] = [];
 
 app.post("/telemetry", (req, res) => {
   const t = req.body as Telemetry;
-  telemetryStore.push(t);
+  
+  // Remove any existing telemetry for this service (upsert behavior)
+  const existingIndex = telemetryStore.findIndex(
+    existing => existing.service_namespace === t.service_namespace && 
+                existing.service_name === t.service_name
+  );
+  
+  if (existingIndex >= 0) {
+    telemetryStore[existingIndex] = t;
+  } else {
+    telemetryStore.push(t);
+  }
+  
   res.json({ status: "ok" });
 });
 
@@ -45,11 +57,10 @@ app.get("/graph", (_req, res) => {
   const seen = new Set<string>();
   const serviceDependencies: Array<{from: string, to: string}> = [];
 
-  // First pass: Create all nodes and collect dependencies
+  // Create service nodes only (no instances)
   telemetryStore.forEach((t) => {
     const nsNodeId = t.service_namespace;
     const serviceNodeId = `${t.service_namespace}::${t.service_name}`;
-    const instanceNodeId = t.instance_id ? `${t.service_namespace}::${t.service_name}::${t.instance_id}` : null;
 
     // Create namespace node
     if (!seen.has(nsNodeId)) {
@@ -79,33 +90,7 @@ app.get("/graph", (_req, res) => {
       seen.add(serviceNodeId);
     }
 
-    // Create instance node if instance_id exists
-    if (instanceNodeId && !seen.has(instanceNodeId)) {
-      nodes.push({
-        id: instanceNodeId,
-        label: t.instance_id,
-        team: t.team,
-        environment: t.environment,
-        component_type: t.component_type,
-        shape: "box",
-        shapeProperties: {
-          borderDashes: [5, 5] // Dashed border for instances
-        },
-        nodeType: "instance"
-      });
-      edges.push({ 
-        from: serviceNodeId, 
-        to: instanceNodeId,
-        dashes: [5, 5], // Dashed line for instance connections
-        arrows: { to: { enabled: false } }, // No arrow for instance connections
-        title: "instance", // Tooltip for instance edges
-        color: { color: "#888" }, // Default grey color for instance edges
-        edgeType: "instance" // Mark this as an instance edge for later color updates
-      });
-      seen.add(instanceNodeId);
-    }
-
-    // Collect service dependencies for second pass
+    // Collect service dependencies
     t.depends_on.forEach((dep) => {
       const targetServiceId = `${dep.service_namespace}::${dep.service_name}`;
       serviceDependencies.push({
@@ -115,7 +100,7 @@ app.get("/graph", (_req, res) => {
     });
   });
 
-  // Second pass: Create dependency edges (only between existing services)
+  // Create dependency edges (only between existing services)
   serviceDependencies.forEach((dep) => {
     const edgeId = `${dep.from}-->${dep.to}`;
     
@@ -130,9 +115,9 @@ app.get("/graph", (_req, res) => {
         to: dep.to,
         color: { color: "#2B7CE9" }, // Blue for dependencies
         width: 2,
-        arrows: { from: { enabled: true }, to: {enabled: false } } , // Arrows for dependency connections
-        title: "depends_on", // Tooltip for dependency edges
-        edgeType: "dependency" // Mark this as a dependency edge
+        arrows: { from: { enabled: true }, to: {enabled: false } },
+        title: "depends_on",
+        edgeType: "dependency"
       });
     }
   });
