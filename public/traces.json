@@ -1,0 +1,51 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [{ "key": "service.name", "value": { "stringValue": "frontend" } }]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "1",
+              "spanId": "1",
+              "name": "GET /",
+              "startTimeUnixNano": "0",
+              "endTimeUnixNano": "1",
+              "attributes": [],
+              "parentSpanId": "",
+              "status": {}
+            },
+            {
+              "traceId": "1",
+              "spanId": "2",
+              "parentSpanId": "1",
+              "name": "call backend",
+              "startTimeUnixNano": "0",
+              "endTimeUnixNano": "1",
+              "attributes": [
+                { "key": "peer.service", "value": { "stringValue": "backend" } }
+              ],
+              "status": {}
+            },
+            {
+              "traceId": "1",
+              "spanId": "3",
+              "parentSpanId": "1",
+              "name": "call db",
+              "startTimeUnixNano": "0",
+              "endTimeUnixNano": "1",
+              "attributes": [
+                { "key": "peer.service", "value": { "stringValue": "database" } }
+              ],
+              "status": {}
+            }
+
+          ]
+        }
+      ]
+    }
+  ]
+}
+

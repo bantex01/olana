@@ -1,0 +1,10 @@
+{
+  "nodes": [
+    { "id": "frontend", "label": "frontend", "group": "prod", "team": "web", "component_type": "service" },
+    { "id": "api", "label": "api", "group": "prod", "team": "platform", "component_type": "service" }
+  ],
+  "edges": [
+    { "from": "frontend", "to": "api" }
+  ]
+}
+

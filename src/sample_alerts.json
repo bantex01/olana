@@ -1,0 +1,9 @@
+[
+  {
+    "service_name": "api",
+    "severity": "warning",
+    "message": "High response latency",
+    "timestamp": "2024-06-01T10:00:00Z"
+  }
+]
+

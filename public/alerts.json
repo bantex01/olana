@@ -1,0 +1,13 @@
+[
+  {
+    "service": "backend",
+    "alert": "High error rate",
+    "severity": "critical"
+  },
+  {
+    "service": "frontend",
+    "alert": "Increased latency",
+    "severity": "warning"
+  }
+]
+
