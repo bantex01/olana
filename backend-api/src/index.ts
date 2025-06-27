@@ -102,7 +102,7 @@ app.post("/telemetry", async (req, res) => {
   }
 });
 
-// Create new alert
+// Create new alert with deduplication
 app.post("/alerts", async (req, res) => {
   const client = await pool.connect();
   
@@ -115,6 +115,8 @@ app.post("/alerts", async (req, res) => {
       [a.service_namespace, a.service_name]
     );
     
+    let serviceId: number;
+    
     if (serviceResult.rows.length === 0) {
       // Create service if it doesn't exist
       const newServiceResult = await client.query(`
@@ -123,22 +125,35 @@ app.post("/alerts", async (req, res) => {
         RETURNING id
       `, [a.service_namespace, a.service_name]);
       
-      const serviceId = newServiceResult.rows[0].id;
-      
-      await client.query(`
-        INSERT INTO alerts (service_id, instance_id, severity, message, alert_source, external_alert_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [serviceId, a.instance_id, a.severity, a.message, a.alert_source || 'manual', a.external_alert_id]);
+      serviceId = newServiceResult.rows[0].id;
     } else {
-      const serviceId = serviceResult.rows[0].id;
-      
-      await client.query(`
-        INSERT INTO alerts (service_id, instance_id, severity, message, alert_source, external_alert_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [serviceId, a.instance_id, a.severity, a.message, a.alert_source || 'manual', a.external_alert_id]);
+      serviceId = serviceResult.rows[0].id;
     }
     
-    res.json({ status: "ok" });
+    // Try to insert new alert, or increment count if duplicate exists
+    const alertResult = await client.query(`
+      INSERT INTO alerts (service_id, instance_id, severity, message, alert_source, external_alert_id, count, first_seen, last_seen)
+      VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NOW())
+      ON CONFLICT (service_id, instance_id, severity, message)
+      DO UPDATE SET 
+        count = alerts.count + 1,
+        last_seen = NOW(),
+        status = 'firing',
+        -- Update source info if provided
+        alert_source = CASE WHEN EXCLUDED.alert_source IS NOT NULL THEN EXCLUDED.alert_source ELSE alerts.alert_source END,
+        external_alert_id = CASE WHEN EXCLUDED.external_alert_id IS NOT NULL THEN EXCLUDED.external_alert_id ELSE alerts.external_alert_id END
+      RETURNING id, count, (count = 1) as is_new_alert
+    `, [serviceId, a.instance_id || '', a.severity, a.message, a.alert_source || 'manual', a.external_alert_id]);
+    
+    const result = alertResult.rows[0];
+    
+    res.json({ 
+      status: "ok", 
+      alert_id: result.id,
+      count: result.count,
+      is_new_alert: result.is_new_alert,
+      message: result.is_new_alert ? "New alert created" : `Alert count incremented to ${result.count}`
+    });
     
   } catch (error) {
     console.error('Alert error:', error);
@@ -257,12 +272,15 @@ app.get("/alerts", async (req, res) => {
         a.severity,
         a.message,
         a.status,
+        a.count,
+        a.first_seen,
+        a.last_seen,
         a.created_at,
         a.resolved_at
       FROM alerts a
       JOIN services s ON a.service_id = s.id
       WHERE a.status = 'firing'
-      ORDER BY a.created_at DESC
+      ORDER BY a.last_seen DESC
     `);
     
     const alerts = alertsResult.rows.map((row: any) => ({
@@ -272,6 +290,9 @@ app.get("/alerts", async (req, res) => {
       severity: row.severity,
       message: row.message,
       status: row.status,
+      count: row.count,
+      first_seen: row.first_seen,
+      last_seen: row.last_seen,
       created_at: row.created_at,
       resolved_at: row.resolved_at
     }));

@@ -7,6 +7,9 @@ type Alert = {
   instance_id?: string;
   severity: string;
   message: string;
+  count?: number;
+  first_seen?: string;
+  last_seen?: string;
 };
 
 type Node = {
@@ -100,7 +103,11 @@ const App = () => {
             tooltip += `\n\nAlerts:`;
             serviceAlerts.forEach(alert => {
               const instanceInfo = alert.instance_id ? ` (${alert.instance_id})` : '';
-              tooltip += `\n• [${alert.severity}] ${alert.message}${instanceInfo}`;
+              //tooltip += `\n• [${alert.severity}] ${alert.message}${instanceInfo}`;
+              const countInfo = alert.count && alert.count > 1 ? ` [x${alert.count}]` : '';
+              const timeInfo = alert.last_seen ? ` - Last: ${new Date(alert.last_seen).toLocaleString()}` : '';
+              tooltip += `\n• [${alert.severity}] ${alert.message}${instanceInfo}${countInfo}${timeInfo}`;
+
             });
           }
         } else if (n.nodeType === "namespace") {
@@ -183,8 +190,16 @@ const App = () => {
           <ul>
             {serviceAlerts.map((alert, idx) => (
               <li key={idx}>
+                {/*<strong>[{alert.severity}]</strong> {alert.message}
+                {alert.instance_id && <span style={{ color: "#666" }}> (instance: {alert.instance_id})</span>}*/}
                 <strong>[{alert.severity}]</strong> {alert.message}
                 {alert.instance_id && <span style={{ color: "#666" }}> (instance: {alert.instance_id})</span>}
+                {alert.count && alert.count > 1 && <span style={{ color: "#0066cc", fontWeight: "bold" }}> × {alert.count}</span>}
+                {alert.last_seen && (
+                  <div style={{ fontSize: "0.8em", color: "#888" }}>
+                    Last seen: {new Date(alert.last_seen).toLocaleString()}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
