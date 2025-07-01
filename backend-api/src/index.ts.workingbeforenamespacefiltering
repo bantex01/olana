@@ -22,6 +22,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
+// Enhanced type definitions
 type Telemetry = {
   service_namespace: string;
   service_name: string;
@@ -29,7 +30,7 @@ type Telemetry = {
   team: string;
   component_type: string;
   depends_on: { service_namespace: string; service_name: string }[];
-  tags?: string[]; // Enhanced: Optional tags in telemetry
+  tags?: string[]; // NEW: Optional tags in telemetry
 };
 
 type Alert = {
@@ -120,7 +121,7 @@ app.post("/telemetry", async (req, res) => {
   }
 });
 
-// EXISTING: Create new alert with deduplication
+// EXISTING: Create new alert (unchanged)
 app.post("/alerts", async (req, res) => {
   const client = await pool.connect();
   
@@ -180,82 +181,52 @@ app.post("/alerts", async (req, res) => {
   }
 });
 
-// CLEAN: Generate graph data with tag and namespace filtering + dependency expansion
+// COMPLETE FIXED: Generate graph data with filtering support
 app.get("/graph", async (req, res) => {
   const client = await pool.connect();
   
   try {
-    console.log('=== GRAPH REQUEST ===');
-    console.log('Query params:', req.query);
-    
     // Parse query filters
     const filters: GraphFilters = {};
     if (req.query.tags) filters.tags = (req.query.tags as string).split(',');
     if (req.query.namespaces) filters.namespaces = (req.query.namespaces as string).split(',');
+    if (req.query.teams) filters.teams = (req.query.teams as string).split(',');
     if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
-    
-    const includeDependents = req.query.includeDependents === 'true';
-    console.log('Include dependents:', includeDependents);
+    if (req.query.environments) filters.environments = (req.query.environments as string).split(',');
 
-    // If namespace filtering is active and includeDependents is true, expand the namespace list
-    let finalNamespaces = filters.namespaces || [];
-    
-    if (includeDependents && filters.namespaces && filters.namespaces.length > 0) {
-      console.log('Expanding namespaces with dependencies...');
-      console.log('Original namespaces:', filters.namespaces);
-      
-      // Get all namespace dependencies
-      const namespaceDepsResult = await client.query(`
-        SELECT from_namespace, to_namespace 
-        FROM namespace_dependencies
-      `);
-      
-      const dependencyMap = new Map<string, Set<string>>();
-      const reverseDependencyMap = new Map<string, Set<string>>();
-      
-      // Build dependency maps
-      namespaceDepsResult.rows.forEach((row: any) => {
-        // Forward dependencies (from -> to)
-        if (!dependencyMap.has(row.from_namespace)) {
-          dependencyMap.set(row.from_namespace, new Set());
-        }
-        dependencyMap.get(row.from_namespace)!.add(row.to_namespace);
-        
-        // Reverse dependencies (to <- from)
-        if (!reverseDependencyMap.has(row.to_namespace)) {
-          reverseDependencyMap.set(row.to_namespace, new Set());
-        }
-        reverseDependencyMap.get(row.to_namespace)!.add(row.from_namespace);
-      });
-      
-      console.log('Dependency map:', Object.fromEntries(dependencyMap));
-      console.log('Reverse dependency map:', Object.fromEntries(reverseDependencyMap));
-      
-      // Expand namespaces by following dependencies
-      const expandedNamespaces = new Set(filters.namespaces);
-      
-      // Add all namespaces that the selected ones depend on (downstream dependencies)
-      filters.namespaces.forEach(ns => {
-        const dependencies = dependencyMap.get(ns);
-        if (dependencies) {
-          dependencies.forEach(dep => expandedNamespaces.add(dep));
-        }
-      });
-      
-      // Add all namespaces that depend on the selected ones (upstream dependencies - blast radius)
-      filters.namespaces.forEach(ns => {
-        const dependents = reverseDependencyMap.get(ns);
-        if (dependents) {
-          dependents.forEach(dep => expandedNamespaces.add(dep));
-        }
-      });
-      
-      finalNamespaces = Array.from(expandedNamespaces);
-      console.log('Expanded namespaces:', finalNamespaces);
+    // Build WHERE clause for service filtering
+    const whereConditions: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (filters.tags && filters.tags.length > 0) {
+      whereConditions.push(`s.tags && $${paramIndex}`);
+      params.push(filters.tags);
+      paramIndex++;
     }
 
-    // Start with all services, then filter
-    let servicesQuery = `
+    if (filters.namespaces && filters.namespaces.length > 0) {
+      whereConditions.push(`s.service_namespace = ANY($${paramIndex})`);
+      params.push(filters.namespaces);
+      paramIndex++;
+    }
+
+    if (filters.teams && filters.teams.length > 0) {
+      whereConditions.push(`s.team = ANY($${paramIndex})`);
+      params.push(filters.teams);
+      paramIndex++;
+    }
+
+    if (filters.environments && filters.environments.length > 0) {
+      whereConditions.push(`s.environment = ANY($${paramIndex})`);
+      params.push(filters.environments);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    // Get filtered services with tags
+    const servicesResult = await client.query(`
       SELECT 
         s.id,
         s.service_namespace,
@@ -265,101 +236,62 @@ app.get("/graph", async (req, res) => {
         s.component_type,
         s.tags
       FROM services s
-    `;
-    
-    let whereConditions: string[] = [];
-    let params: any[] = [];
+      ${whereClause}
+      ORDER BY s.service_namespace, s.service_name
+    `, params);
 
-    // Add tags filter if present
-    if (filters.tags && filters.tags.length > 0) {
-      whereConditions.push('s.tags && $1');
-      params.push(filters.tags);
-    }
-
-    // Add namespace filter (using finalNamespaces which includes expanded ones)
-    if (finalNamespaces.length > 0) {
-      const startIndex = params.length + 1;
-      if (finalNamespaces.length === 1) {
-        whereConditions.push(`s.service_namespace = $${startIndex}`);
-        params.push(finalNamespaces[0]);
-      } else {
-        // Multiple namespaces - build IN clause manually
-        const placeholders = finalNamespaces.map((_item: string, index: number) => `$${startIndex + index}`).join(', ');
-        whereConditions.push(`s.service_namespace IN (${placeholders})`);
-        params.push(...finalNamespaces);
-      }
-    }
-
-    // Add WHERE clause if we have conditions
-    if (whereConditions.length > 0) {
-      servicesQuery += ` WHERE ${whereConditions.join(' AND ')}`;
-    }
-    
-    servicesQuery += ` ORDER BY s.service_namespace, s.service_name`;
-
-    console.log('Services query:', servicesQuery);
-    console.log('Services params:', params);
-
-    // Execute services query
-    const servicesResult = await client.query(servicesQuery, params);
-    console.log('Found services:', servicesResult.rows.length);
-
-    // Get service IDs for dependencies and alerts
+    // Get service dependencies (filtered by included services)
     const serviceIds = servicesResult.rows.map(s => s.id);
+    const dependenciesResult = serviceIds.length > 0 ? await client.query(`
+      SELECT 
+        fs.service_namespace || '::' || fs.service_name as from_service,
+        ts.service_namespace || '::' || ts.service_name as to_service
+      FROM service_dependencies sd
+      JOIN services fs ON sd.from_service_id = fs.id
+      JOIN services ts ON sd.to_service_id = ts.id
+      WHERE sd.from_service_id = ANY($1) AND sd.to_service_id = ANY($1)
+    `, [serviceIds]) : { rows: [] };
 
-    // Get dependencies - simplified
-    let dependenciesResult = { rows: [] };
-    if (serviceIds.length > 0) {
-      // Simple approach - get all dependencies for these services
-      dependenciesResult = await client.query(`
-        SELECT 
-          fs.service_namespace || '::' || fs.service_name as from_service,
-          ts.service_namespace || '::' || ts.service_name as to_service
-        FROM service_dependencies sd
-        JOIN services fs ON sd.from_service_id = fs.id
-        JOIN services ts ON sd.to_service_id = ts.id
-        WHERE sd.from_service_id = ANY($1) OR sd.to_service_id = ANY($1)
-      `, [serviceIds]);
-    }
-
-    // Get namespace dependencies (for ALL namespaces in the result, not just filtered ones)
+    // Get namespace dependencies
     const namespaceDepsResult = await client.query(`
       SELECT from_namespace, to_namespace, dependency_type, description
       FROM namespace_dependencies
       ORDER BY from_namespace, to_namespace
     `);
 
-    // Get alerts - simplified
-    let alertsResult = { rows: [] };
-    if (serviceIds.length > 0) {
-      if (filters.severities && filters.severities.length > 0) {
-        alertsResult = await client.query(`
-          SELECT 
-            s.service_namespace,
-            s.service_name,
-            a.severity,
-            COUNT(*) as alert_count
-          FROM alerts a
-          JOIN services s ON a.service_id = s.id
-          WHERE a.status = 'firing' 
-            AND s.id = ANY($1)
-            AND a.severity = ANY($2)
-          GROUP BY s.service_namespace, s.service_name, a.severity
-        `, [serviceIds, filters.severities]);
-      } else {
-        alertsResult = await client.query(`
-          SELECT 
-            s.service_namespace,
-            s.service_name,
-            a.severity,
-            COUNT(*) as alert_count
-          FROM alerts a
-          JOIN services s ON a.service_id = s.id
-          WHERE a.status = 'firing' 
-            AND s.id = ANY($1)
-          GROUP BY s.service_namespace, s.service_name, a.severity
-        `, [serviceIds]);
-      }
+    // Get alerts - simplified approach to avoid parameter issues
+    let alertsResult;
+    if (serviceIds.length === 0) {
+      alertsResult = { rows: [] };
+    } else if (filters.severities && filters.severities.length > 0) {
+      // With severity filter - get ALL alerts but we'll filter the services shown
+      alertsResult = await client.query(`
+        SELECT 
+          s.service_namespace,
+          s.service_name,
+          a.severity,
+          COUNT(*) as alert_count
+        FROM alerts a
+        JOIN services s ON a.service_id = s.id
+        WHERE a.status = 'firing' 
+          AND s.id = ANY($1)
+          AND a.severity = ANY($2)
+        GROUP BY s.service_namespace, s.service_name, a.severity
+      `, [serviceIds, filters.severities]);
+    } else {
+      // Without severity filter - get all alerts
+      alertsResult = await client.query(`
+        SELECT 
+          s.service_namespace,
+          s.service_name,
+          a.severity,
+          COUNT(*) as alert_count
+        FROM alerts a
+        JOIN services s ON a.service_id = s.id
+        WHERE a.status = 'firing' 
+          AND s.id = ANY($1)
+        GROUP BY s.service_namespace, s.service_name, a.severity
+      `, [serviceIds]);
     }
 
     // Build alert maps for node coloring
@@ -377,7 +309,9 @@ app.get("/graph", async (req, res) => {
     alertsResult.rows.forEach((alert: any) => {
       const serviceKey = `${alert.service_namespace}::${alert.service_name}`;
       
+      // Track services that have alerts matching the severity filter
       servicesWithFilteredAlerts.add(serviceKey);
+      
       alertCount.set(serviceKey, (alertCount.get(serviceKey) || 0) + parseInt(alert.alert_count));
 
       const current = highestSeverity.get(serviceKey);
@@ -397,9 +331,12 @@ app.get("/graph", async (req, res) => {
       const nsNodeId = service.service_namespace;
       const serviceNodeId = `${service.service_namespace}::${service.service_name}`;
       
-      // If severity filtering is active, only show services that have matching alerts
+      // If severity filtering is active, apply more restrictive filtering
       if (filters.severities && filters.severities.length > 0) {
         const hasMatchingAlerts = servicesWithFilteredAlerts.has(serviceNodeId);
+        
+        // Only show services that have alerts matching the severity filter
+        // Skip services with no matching alerts (including services with different severity alerts)
         if (!hasMatchingAlerts) {
           return; // Skip this service
         }
@@ -407,12 +344,12 @@ app.get("/graph", async (req, res) => {
       
       namespaces.add(service.service_namespace);
       
-      // Create namespace node (treat all namespaces the same regardless of how they were included)
+      // Create namespace node
       if (!seen.has(nsNodeId)) {
         nodes.push({
           id: nsNodeId,
           label: service.service_namespace,
-          color: "#888", // Same gray color for all namespaces
+          color: "#888",
           shape: "ellipse",
           nodeType: "namespace"
         });
@@ -424,11 +361,13 @@ app.get("/graph", async (req, res) => {
         const serviceAlertCount = alertCount.get(serviceNodeId) || 0;
         const serviceHighestSeverity = highestSeverity.get(serviceNodeId) || "none";
         
+        console.log(`Service ${serviceNodeId}: alertCount=${serviceAlertCount}, severity=${serviceHighestSeverity}`); // Debug log
+        
         nodes.push({
           id: serviceNodeId,
           label: service.service_name,
           shape: "box",
-          color: "#D3D3D3",
+          color: "#D3D3D3", // Default color, will be overridden by frontend
           team: service.team,
           environment: service.environment,
           component_type: service.component_type,
@@ -462,20 +401,21 @@ app.get("/graph", async (req, res) => {
       }
     });
 
-    // Create namespace dependency edges (only for namespaces that are in our result)
+    // Create namespace dependency edges - FIXED: Blue color and correct arrow direction
     namespaceDepsResult.rows.forEach((dep: any) => {
+      // Only add if both namespaces are visible
       if (namespaces.has(dep.from_namespace) && namespaces.has(dep.to_namespace)) {
         const edgeId = `${dep.from_namespace}==>${dep.to_namespace}`;
         
         if (!edges.find(e => e.id === edgeId)) {
           edges.push({
             id: edgeId,
-            from: dep.from_namespace,
-            to: dep.to_namespace,
-            color: { color: "#2B7CE9" },
+            from: dep.from_namespace,  // FROM namespace (source)
+            to: dep.to_namespace,      // TO namespace (target)
+            color: { color: "#2B7CE9" }, // BLUE like service dependencies
             width: 3,
-            dashes: true,
-            arrows: { to: { enabled: true }, from: { enabled: false } },
+            dashes: true,  // Keep dashed to distinguish from service deps
+            arrows: { to: { enabled: true }, from: { enabled: false } }, // Arrow points TO the target
             title: `namespace dependency: ${dep.description || dep.dependency_type}`,
             edgeType: "namespace"
           });
@@ -483,13 +423,8 @@ app.get("/graph", async (req, res) => {
       }
     });
     
-    console.log(`Returning ${nodes.length} nodes, ${edges.length} edges`);
-    res.json({ 
-      nodes, 
-      edges, 
-      filters: filters,
-      expandedNamespaces: includeDependents ? finalNamespaces : undefined
-    });
+    console.log(`Returning ${nodes.length} nodes, ${edges.length} edges`); // Debug log
+    res.json({ nodes, edges, filters: filters });
     
   } catch (error) {
     console.error('Graph error:', error);
@@ -498,65 +433,14 @@ app.get("/graph", async (req, res) => {
     client.release();
   }
 });
-
-
-// CLEAN: Get all active alerts with comprehensive filtering
+// ENHANCED: Get all active alerts with optional filtering
 app.get("/alerts", async (req, res) => {
   const client = await pool.connect();
   
   try {
-    console.log('=== ALERTS REQUEST ===');
-    console.log('Query params:', req.query);
+    // Parse severity filter
+    const severityFilter = req.query.severities ? (req.query.severities as string).split(',') : null;
     
-    // Parse filters
-    const filters: any = {};
-    if (req.query.tags) filters.tags = (req.query.tags as string).split(',');
-    if (req.query.namespaces) filters.namespaces = (req.query.namespaces as string).split(',');
-    if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
-
-    // Get services that match our filters first
-    let serviceQuery = `
-      SELECT s.id
-      FROM services s
-    `;
-    
-    let serviceWhereConditions: string[] = [];
-    let serviceParams: any[] = [];
-
-    // Add tags filter if present
-    if (filters.tags && filters.tags.length > 0) {
-      serviceWhereConditions.push('s.tags && $1');
-      serviceParams.push(filters.tags);
-    }
-
-    // Add namespace filter if present
-    if (filters.namespaces && filters.namespaces.length > 0) {
-      const startIndex = serviceParams.length + 1;
-      if (filters.namespaces.length === 1) {
-        serviceWhereConditions.push(`s.service_namespace = $${startIndex}`);
-        serviceParams.push(filters.namespaces[0]);
-      } else {
-        const placeholders = filters.namespaces.map((_item: string, index: number) => `$${startIndex + index}`).join(', ');
-        serviceWhereConditions.push(`s.service_namespace IN (${placeholders})`);
-        serviceParams.push(...filters.namespaces);
-      }
-    }
-
-    // Build service query
-    if (serviceWhereConditions.length > 0) {
-      serviceQuery += ` WHERE ${serviceWhereConditions.join(' AND ')}`;
-    }
-
-    console.log('Service filter query:', serviceQuery);
-    console.log('Service filter params:', serviceParams);
-
-    // Get filtered service IDs
-    const serviceResult = await client.query(serviceQuery, serviceParams);
-    const serviceIds = serviceResult.rows.map(row => row.id);
-
-    console.log('Filtered service IDs:', serviceIds);
-
-    // Now get alerts for those services
     let alertQuery = `
       SELECT 
         s.service_namespace,
@@ -575,37 +459,14 @@ app.get("/alerts", async (req, res) => {
       WHERE a.status = 'firing'
     `;
     
-    let params: any[] = [];
-
-    // Filter by our service IDs if we have any filters
-    if (serviceWhereConditions.length > 0) {
-      if (serviceIds.length === 0) {
-        // No services match filters, return empty
-        res.json([]);
-        return;
-      } else {
-        alertQuery += ` AND s.id = ANY($1)`;
-        params.push(serviceIds);
-      }
+    const params: any[] = [];
+    
+    if (severityFilter && severityFilter.length > 0) {
+      alertQuery += ' AND a.severity = ANY($1)';
+      params.push(severityFilter);
     }
-
-    // Add severity filter if present
-    if (filters.severities && filters.severities.length > 0) {
-      const severityStartIndex = params.length + 1;
-      if (filters.severities.length === 1) {
-        alertQuery += ` AND a.severity = $${severityStartIndex}`;
-        params.push(filters.severities[0]);
-      } else {
-        const placeholders = filters.severities.map((_item: string, index: number) => `$${severityStartIndex + index}`).join(', ');
-        alertQuery += ` AND a.severity IN (${placeholders})`;
-        params.push(...filters.severities);
-      }
-    }
-
-    alertQuery += ` ORDER BY a.last_seen DESC`;
-
-    console.log('Alert query:', alertQuery);
-    console.log('Alert params:', params);
+    
+    alertQuery += ' ORDER BY a.last_seen DESC';
     
     const alertsResult = await client.query(alertQuery, params);
     
@@ -623,7 +484,6 @@ app.get("/alerts", async (req, res) => {
       resolved_at: row.resolved_at
     }));
     
-    console.log(`Returning ${alerts.length} alerts`);
     res.json(alerts);
     
   } catch (error) {
@@ -775,7 +635,7 @@ app.delete("/namespace-dependencies/:id", async (req, res) => {
   }
 });
 
-// EXISTING: Resolve alerts
+// EXISTING: Other endpoints (unchanged)
 app.patch("/alerts/:alertId/resolve", async (req, res) => {
   const client = await pool.connect();
   
@@ -798,7 +658,6 @@ app.patch("/alerts/:alertId/resolve", async (req, res) => {
   }
 });
 
-// EXISTING: Health check
 app.get("/health", async (req, res) => {
   try {
     await pool.query('SELECT 1');
