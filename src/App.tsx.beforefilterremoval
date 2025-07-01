@@ -113,6 +113,34 @@ const App = () => {
     return params.toString() ? `?${params.toString()}` : '';
   };
 
+  // Apply filters and refresh graph
+  const applyFilters = () => {
+    const newFilters: GraphFilters = {};
+    
+    if (selectedTags.length > 0) {
+      newFilters.tags = selectedTags;
+    }
+    if (selectedNamespaces.length > 0) {
+      newFilters.namespaces = selectedNamespaces;
+    }
+    if (selectedSeverities.length > 0) {
+      newFilters.severities = selectedSeverities;
+    }
+    
+    setFilters(newFilters);
+    fetchData(newFilters);
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSelectedTags([]);
+    setSelectedNamespaces([]);
+    setSelectedSeverities([]);
+    setIncludeDependentNamespaces(false);
+    setFilters({});
+    fetchData({});
+  };
+
 const fetchData = async (currentFilters: GraphFilters = {}) => {
   try {
     const filterQuery = buildFilterQuery(currentFilters);
@@ -347,203 +375,225 @@ const fetchData = async (currentFilters: GraphFilters = {}) => {
         </button>
       </div>
 
-   {/* Filter Panel */}
-{showFilters && (
-  <div style={{ 
-    backgroundColor: "#f8f9fa", 
-    padding: "1rem", 
-    borderRadius: "4px", 
-    marginBottom: "1rem",
-    border: "1px solid #dee2e6"
-  }}>
-    <h4>Graph Filters</h4>
-    
-    {/* Namespace Filter */}
-    <div style={{ marginBottom: "1rem" }}>
-      <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
-        Filter by Namespaces:
-      </label>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.5rem" }}>
-        {availableNamespaces.map(namespace => (
-          <label key={namespace} style={{ display: "flex", alignItems: "center", marginRight: "1rem" }}>
-            <input
-              type="checkbox"
-              checked={selectedNamespaces.includes(namespace)}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedNamespaces([...selectedNamespaces, namespace]);
-                } else {
-                  setSelectedNamespaces(selectedNamespaces.filter(ns => ns !== namespace));
-                }
-              }}
-              style={{ marginRight: "0.25rem" }}
-            />
-            <span style={{ 
-              backgroundColor: "#e9ecef", 
-              padding: "0.25rem 0.5rem", 
-              borderRadius: "4px",
-              fontSize: "0.9em"
-            }}>
-              {namespace}
-            </span>
-          </label>
-        ))}
-      </div>
-      
-      {/* Include Dependent Namespaces Option - moved here where it belongs */}
-      <div style={{ marginTop: "0.5rem" }}>
-        <label style={{ display: "flex", alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={includeDependentNamespaces}
-            onChange={(e) => setIncludeDependentNamespaces(e.target.checked)}
-            style={{ marginRight: "0.5rem" }}
-            disabled={selectedNamespaces.length === 0}
-          />
-          <span style={{ 
-            color: selectedNamespaces.length === 0 ? "#999" : "#000",
-            fontSize: "0.9em"
-          }}>
-            Include dependent namespaces (show blast radius)
-          </span>
-        </label>
-        {selectedNamespaces.length === 0 && (
-          <div style={{ fontSize: "0.8em", color: "#666", marginTop: "0.25rem", marginLeft: "1.5rem" }}>
-            Select namespaces first to enable this option
-          </div>
-        )}
-      </div>
-    </div>
-
-    {/* Tag Filter */}
-    <div style={{ marginBottom: "1rem" }}>
-      <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
-        Filter by Tags:
-      </label>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-        {availableTags.map(tag => (
-          <label key={tag} style={{ display: "flex", alignItems: "center", marginRight: "1rem" }}>
-            <input
-              type="checkbox"
-              checked={selectedTags.includes(tag)}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedTags([...selectedTags, tag]);
-                } else {
-                  setSelectedTags(selectedTags.filter(t => t !== tag));
-                }
-              }}
-              style={{ marginRight: "0.25rem" }}
-            />
-            <span style={{ 
-              backgroundColor: "#e9ecef", 
-              padding: "0.25rem 0.5rem", 
-              borderRadius: "4px",
-              fontSize: "0.9em"
-            }}>
-              {tag}
-            </span>
-          </label>
-        ))}
-      </div>
-    </div>
-
-    {/* Severity Filter */}
-    <div style={{ marginBottom: "1rem" }}>
-      <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
-        Filter by Alert Severity:
-      </label>
-      <div style={{ display: "flex", gap: "1rem" }}>
-        {['fatal', 'critical', 'warning'].map(severity => (
-          <label key={severity} style={{ display: "flex", alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={selectedSeverities.includes(severity)}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedSeverities([...selectedSeverities, severity]);
-                } else {
-                  setSelectedSeverities(selectedSeverities.filter(s => s !== severity));
-                }
-              }}
-              style={{ marginRight: "0.25rem" }}
-            />
-            <span style={{ 
-              color: severity === 'fatal' ? 'black' : severity === 'critical' ? 'red' : 'orange',
-              fontWeight: "bold"
-            }}>
-              {severity}
-            </span>
-          </label>
-        ))}
-      </div>
-    </div>
-
-    {/* Active Filters Display - keep this but remove the manual buttons */}
-    {(selectedTags.length > 0 || selectedNamespaces.length > 0 || selectedSeverities.length > 0) && (
-      <div style={{ marginTop: "1rem", padding: "0.5rem", backgroundColor: "#d1ecf1", borderRadius: "4px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <strong>Active Filters:</strong>
-            {selectedNamespaces.length > 0 && (
-              <span style={{ marginLeft: "0.5rem" }}>
-                Namespaces: {selectedNamespaces.join(', ')}
-                {includeDependentNamespaces && <em> (+ dependents)</em>}
-              </span>
-            )}
-            {selectedTags.length > 0 && (
-              <span style={{ marginLeft: "0.5rem" }}>
-                Tags: {selectedTags.join(', ')}
-              </span>
-            )}
-            {selectedSeverities.length > 0 && (
-              <span style={{ marginLeft: "0.5rem" }}>
-                Severities: {selectedSeverities.join(', ')}
-              </span>
-            )}
-          </div>
-          {/* Add a single clear all button that's less prominent */}
-          <button 
-            onClick={() => {
-              setSelectedTags([]);
-              setSelectedNamespaces([]);
-              setSelectedSeverities([]);
-              setIncludeDependentNamespaces(false);
-            }}
-            style={{ 
-              padding: "0.25rem 0.5rem", 
-              backgroundColor: "#6c757d", 
-              color: "white", 
-              border: "none", 
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "0.8em"
-            }}
-            title="Clear all filters"
-          >
-            Clear All
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-)}
-
-        {/* Legend */}
+      {/* Filter Panel */}
+      {showFilters && (
         <div style={{ 
           backgroundColor: "#f8f9fa", 
-          padding: "0.5rem", 
-          marginBottom: "1rem", 
-          borderRadius: "4px",
+          padding: "1rem", 
+          borderRadius: "4px", 
+          marginBottom: "1rem",
           border: "1px solid #dee2e6"
         }}>
-          <strong>Legend:</strong>
-          <span style={{ marginLeft: "1rem", color: "#2B7CE9" }}>━ Service Dependencies</span>
-          <span style={{ marginLeft: "1rem", color: "#2B7CE9" }}>┅ Namespace Dependencies</span>
-          <span style={{ marginLeft: "1rem" }}>🔴 Critical</span>
-          <span style={{ marginLeft: "0.5rem" }}>🟠 Warning</span>
-          <span style={{ marginLeft: "0.5rem" }}>⚫ Fatal</span>
+          <h4>Graph Filters</h4>
+          
+          {/* Namespace Filter */}
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
+              Filter by Namespaces:
+            </label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              {availableNamespaces.map(namespace => (
+                <label key={namespace} style={{ display: "flex", alignItems: "center", marginRight: "1rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedNamespaces.includes(namespace)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedNamespaces([...selectedNamespaces, namespace]);
+                      } else {
+                        setSelectedNamespaces(selectedNamespaces.filter(ns => ns !== namespace));
+                      }
+                    }}
+                    style={{ marginRight: "0.25rem" }}
+                  />
+                  <span style={{ 
+                    backgroundColor: "#e9ecef", 
+                    padding: "0.25rem 0.5rem", 
+                    borderRadius: "4px",
+                    fontSize: "0.9em"
+                  }}>
+                    {namespace}
+                  </span>
+                </label>
+              ))}
+            </div>
+            
+            {/* Include Dependent Namespaces Option */}
+            <label style={{ display: "flex", alignItems: "center", marginTop: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={includeDependentNamespaces}
+                onChange={(e) => setIncludeDependentNamespaces(e.target.checked)}
+                style={{ marginRight: "0.5rem" }}
+                disabled={selectedNamespaces.length === 0}
+              />
+              <span style={{ 
+                color: selectedNamespaces.length === 0 ? "#999" : "#000",
+                fontSize: "0.9em"
+              }}>
+                Include dependent namespaces (show blast radius)
+              </span>
+            </label>
+          </div>
+
+          {/* Tag Filter */}
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
+              Filter by Tags:
+            </label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              {availableTags.map(tag => (
+                <label key={tag} style={{ display: "flex", alignItems: "center", marginRight: "1rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedTags.includes(tag)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedTags([...selectedTags, tag]);
+                      } else {
+                        setSelectedTags(selectedTags.filter(t => t !== tag));
+                      }
+                    }}
+                    style={{ marginRight: "0.25rem" }}
+                  />
+                  <span style={{ 
+                    backgroundColor: "#e9ecef", 
+                    padding: "0.25rem 0.5rem", 
+                    borderRadius: "4px",
+                    fontSize: "0.9em"
+                  }}>
+                    {tag}
+                  </span>
+                </label>
+              ))}
+            </div>
+            
+            {/* Include Dependent Namespaces Option */}
+            <div style={{ marginTop: "0.5rem" }}>
+              <label style={{ display: "flex", alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={includeDependentNamespaces}
+                  onChange={(e) => setIncludeDependentNamespaces(e.target.checked)}
+                  style={{ marginRight: "0.5rem" }}
+                  disabled={selectedNamespaces.length === 0}
+                />
+                <span style={{ 
+                  color: selectedNamespaces.length === 0 ? "#999" : "#000",
+                  fontSize: "0.9em"
+                }}>
+                  Include dependent namespaces (show blast radius)
+                </span>
+              </label>
+              {selectedNamespaces.length === 0 && (
+                <div style={{ fontSize: "0.8em", color: "#666", marginTop: "0.25rem", marginLeft: "1.5rem" }}>
+                  Select namespaces first to enable this option
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Severity Filter */}
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ fontWeight: "bold", display: "block", marginBottom: "0.5rem" }}>
+              Filter by Alert Severity:
+            </label>
+            <div style={{ display: "flex", gap: "1rem" }}>
+              {['fatal', 'critical', 'warning'].map(severity => (
+                <label key={severity} style={{ display: "flex", alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedSeverities.includes(severity)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedSeverities([...selectedSeverities, severity]);
+                      } else {
+                        setSelectedSeverities(selectedSeverities.filter(s => s !== severity));
+                      }
+                    }}
+                    style={{ marginRight: "0.25rem" }}
+                  />
+                  <span style={{ 
+                    color: severity === 'fatal' ? 'black' : severity === 'critical' ? 'red' : 'orange',
+                    fontWeight: "bold"
+                  }}>
+                    {severity}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Filter Actions */}
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button 
+              onClick={applyFilters}
+              style={{ 
+                padding: "0.5rem 1rem", 
+                backgroundColor: "#28a745", 
+                color: "white", 
+                border: "none", 
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              Apply Filters
+            </button>
+            <button 
+              onClick={clearFilters}
+              style={{ 
+                padding: "0.5rem 1rem", 
+                backgroundColor: "#6c757d", 
+                color: "white", 
+                border: "none", 
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              Clear All
+            </button>
+          </div>
+
+          {/* Active Filters Display */}
+          {(selectedTags.length > 0 || selectedNamespaces.length > 0 || selectedSeverities.length > 0) && (
+            <div style={{ marginTop: "1rem", padding: "0.5rem", backgroundColor: "#d1ecf1", borderRadius: "4px" }}>
+              <strong>Active Filters:</strong>
+              {selectedNamespaces.length > 0 && (
+                <span style={{ marginLeft: "0.5rem" }}>
+                  Namespaces: {selectedNamespaces.join(', ')}
+                  {includeDependentNamespaces && <em> (+ dependents)</em>}
+                </span>
+              )}
+              {selectedTags.length > 0 && (
+                <span style={{ marginLeft: "0.5rem" }}>
+                  Tags: {selectedTags.join(', ')}
+                </span>
+              )}
+              {selectedSeverities.length > 0 && (
+                <span style={{ marginLeft: "0.5rem" }}>
+                  Severities: {selectedSeverities.join(', ')}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Legend */}
+      <div style={{ 
+        backgroundColor: "#f8f9fa", 
+        padding: "0.5rem", 
+        marginBottom: "1rem", 
+        borderRadius: "4px",
+        border: "1px solid #dee2e6"
+      }}>
+        <strong>Legend:</strong>
+        <span style={{ marginLeft: "1rem", color: "#2B7CE9" }}>━ Service Dependencies</span>
+        <span style={{ marginLeft: "1rem", color: "#2B7CE9" }}>┅ Namespace Dependencies</span>
+        <span style={{ marginLeft: "1rem" }}>🔴 Critical</span>
+        <span style={{ marginLeft: "0.5rem" }}>🟠 Warning</span>
+        <span style={{ marginLeft: "0.5rem" }}>⚫ Fatal</span>
+      </div>
 
       {/* Graph */}
       <div
