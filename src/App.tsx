@@ -243,7 +243,7 @@ const fetchData = async (currentFilters: GraphFilters = {}) => {
             roundness: 0.5
           }
         },
-        layout: {
+        /*layout: {
           hierarchical: {
             enabled: true,
             direction: "LR",
@@ -254,7 +254,40 @@ const fetchData = async (currentFilters: GraphFilters = {}) => {
         },
         physics: {
           enabled: false
+        }*/
+
+        layout: {
+          improvedLayout: true,
+          randomSeed: 42, // For consistent layouts
+        },
+        physics: {
+          enabled: true,
+          solver: 'forceAtlas2Based',
+          forceAtlas2Based: {
+            gravitationalConstant: -50,
+            centralGravity: 0.01,
+            springLength: 200,
+            springConstant: 0.08,
+            damping: 0.4,
+            avoidOverlap: 1
+          },
+          stabilization: {iterations: 150}
         }
+
+          /*layout: {
+            clusterThreshold: 150,
+            improvedLayout: true
+          },
+          physics: {
+            enabled: true,
+            repulsion: {
+              centralGravity: 0.2,
+              springLength: 200,
+              springConstant: 0.05,
+              nodeDistance: 100,
+              damping: 0.09
+            }
+          }*/
       };
 
       console.log('Creating new Network...');
