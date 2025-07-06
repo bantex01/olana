@@ -25,6 +25,9 @@ type Node = {
   tags?: string[];
   alertCount?: number;  // Added for backend-computed alert counts
   highestSeverity?: string;  // Added for backend-computed severity
+  external_calls?: Array<{host: string; method?: string; path?: string; count: number}>;
+  database_calls?: Array<{system: string; name?: string; host?: string; operation?: string; count: number}>;
+  rpc_calls?: Array<{service: string; method?: string; count: number}>;
 };
 
 type Edge = {
@@ -142,6 +145,26 @@ const fetchData = async (currentFilters: GraphFilters = {}) => {
 
     const graphData = await graphRes.json();
     const { nodes, edges }: { nodes: Node[]; edges: Edge[] } = graphData;
+
+    console.log('=== FRONTEND ENRICHMENT DEBUG ===');
+    const nodeWithEnrichment = nodes.find(n => 
+      (n.external_calls && n.external_calls.length > 0) || 
+      (n.database_calls && n.database_calls.length > 0) || 
+      (n.rpc_calls && n.rpc_calls.length > 0)
+    );
+    if (nodeWithEnrichment) {
+      console.log('Node with enrichment:', nodeWithEnrichment.id);
+      console.log('External calls:', nodeWithEnrichment.external_calls);
+      console.log('Database calls:', nodeWithEnrichment.database_calls);
+      console.log('RPC calls:', nodeWithEnrichment.rpc_calls);
+    } else {
+      console.log('No nodes found with enrichment data');
+    }
+    console.log('==================================');
+
+
+
+    
     const alertData: Alert[] = await alertRes.json();
     
     console.log('Received nodes:', nodes.length);
@@ -180,6 +203,36 @@ const fetchData = async (currentFilters: GraphFilters = {}) => {
         // Add tags if present
         if (n.tags && n.tags.length > 0) {
           tooltip += `\nTags: ${n.tags.join(', ')}`;
+        }
+
+        // Add enrichment data to tooltip
+        if (n.nodeType === "service") {
+          // External HTTP calls
+          if (n.external_calls && n.external_calls.length > 0) {
+            tooltip += `\n\nExternal HTTP Calls:`;
+            n.external_calls.forEach(call => {
+              tooltip += `\n• ${call.method || 'GET'} ${call.host}${call.path || ''} (${call.count}x)`;
+            });
+          }
+
+          // Database calls  
+          if (n.database_calls && n.database_calls.length > 0) {
+            tooltip += `\n\nDatabase Calls:`;
+            n.database_calls.forEach(call => {
+              const operation = call.operation ? `${call.operation} ` : '';
+              const dbName = call.name ? ` (${call.name})` : '';
+              tooltip += `\n• ${operation}${call.system}${dbName} @ ${call.host || 'unknown'} (${call.count}x)`;
+            });
+          }
+
+          // RPC calls
+          if (n.rpc_calls && n.rpc_calls.length > 0) {
+            tooltip += `\n\nRPC Calls:`;
+            n.rpc_calls.forEach(call => {
+              const method = call.method ? `.${call.method}` : '';
+              tooltip += `\n• ${call.service}${method} (${call.count}x)`;
+            });
+          }
         }
         
         // Add alerts section - filter alerts by current severity filter
