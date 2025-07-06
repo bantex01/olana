@@ -29,7 +29,12 @@ type Telemetry = {
   team: string;
   component_type: string;
   depends_on: { service_namespace: string; service_name: string }[];
-  tags?: string[]; // Enhanced: Optional tags in telemetry
+  tags?: string[];
+  
+  // NEW: Add enrichment fields
+  external_calls?: { host: string; method?: string; path?: string; count: number }[];
+  database_calls?: { system: string; name?: string; host?: string; operation?: string; count: number }[];
+  rpc_calls?: { service: string; method?: string; count: number }[];
 };
 
 type Alert = {
@@ -69,17 +74,24 @@ app.post("/telemetry", async (req, res) => {
     
     // Upsert service (now with tags support)
     const serviceResult = await client.query(`
-      INSERT INTO services (service_namespace, service_name, environment, team, component_type, tags, last_seen)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      INSERT INTO services (service_namespace, service_name, environment, team, component_type, tags, external_calls, database_calls, rpc_calls, last_seen)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
       ON CONFLICT (service_namespace, service_name)
       DO UPDATE SET 
         environment = EXCLUDED.environment,
         team = EXCLUDED.team,
         component_type = EXCLUDED.component_type,
         tags = EXCLUDED.tags,
+        external_calls = EXCLUDED.external_calls,
+        database_calls = EXCLUDED.database_calls,
+        rpc_calls = EXCLUDED.rpc_calls,
         last_seen = NOW()
       RETURNING id
-    `, [t.service_namespace, t.service_name, t.environment, t.team, t.component_type, t.tags || []]);
+    `, [t.service_namespace, t.service_name, t.environment, t.team, t.component_type, 
+        t.tags || [], 
+        JSON.stringify(t.external_calls || []), 
+        JSON.stringify(t.database_calls || []), 
+        JSON.stringify(t.rpc_calls || [])]);
     
     const serviceId = serviceResult.rows[0].id;
     
@@ -263,10 +275,13 @@ app.get("/graph", async (req, res) => {
         s.environment,
         s.team,
         s.component_type,
-        s.tags
+        s.tags,
+        s.external_calls,
+        s.database_calls,
+        s.rpc_calls
       FROM services s
     `;
-    
+
     let whereConditions: string[] = [];
     let params: any[] = [];
 
@@ -302,6 +317,21 @@ app.get("/graph", async (req, res) => {
 
     // Execute services query
     const servicesResult = await client.query(servicesQuery, params);
+    console.log('Found services:', servicesResult.rows.length);
+    console.log('=== SERVICE DATA DEBUG ===');
+    const serviceWithEnrichment = servicesResult.rows.find(s => 
+      s.external_calls !== '[]' || s.database_calls !== '[]' || s.rpc_calls !== '[]'
+    );
+    if (serviceWithEnrichment) {
+      console.log('Service with enrichment:', serviceWithEnrichment.service_name);
+      console.log('External calls:', serviceWithEnrichment.external_calls);
+      console.log('Database calls:', serviceWithEnrichment.database_calls); 
+      console.log('RPC calls:', serviceWithEnrichment.rpc_calls);
+    } else {
+      console.log('No services found with enrichment data');
+    }
+    console.log('=========================');
+
     console.log('Found services:', servicesResult.rows.length);
 
     // Get service IDs for dependencies and alerts
@@ -435,7 +465,11 @@ app.get("/graph", async (req, res) => {
           tags: service.tags || [],
           nodeType: "service",
           alertCount: serviceAlertCount,
-          highestSeverity: serviceHighestSeverity
+          highestSeverity: serviceHighestSeverity,
+          external_calls: typeof service.external_calls === 'string' ? JSON.parse(service.external_calls) : service.external_calls,
+          database_calls: typeof service.database_calls === 'string' ? JSON.parse(service.database_calls) : service.database_calls,
+          rpc_calls: typeof service.rpc_calls === 'string' ? JSON.parse(service.rpc_calls) : service.rpc_calls,
+
         });
         
         // Add edge from namespace to service
