@@ -314,7 +314,7 @@ const fetchData = async (currentFilters: GraphFilters = {}) => {
           randomSeed: 42, // For consistent layouts
         },
         physics: {
-          enabled: true,
+          enabled: false,
           solver: 'forceAtlas2Based',
           forceAtlas2Based: {
             gravitationalConstant: -50,
