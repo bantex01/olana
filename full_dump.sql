@@ -1,9 +1,144 @@
 --
+-- PostgreSQL database cluster dump
+--
+
+SET default_transaction_read_only = off;
+
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+
+--
+-- Roles
+--
+
+CREATE ROLE adalton;
+ALTER ROLE adalton WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+CREATE ROLE postgres;
+ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:HPyTZOOEcyU9V71xRQCNpw==$NTj14yVCYksDBl9BNwzxdLukslBmNRyQRfS1h9bhVPU=:S+rIgcQzpL1jTXVr37mOvQG1qM6FBgKPIRL4QpDS6H4=';
+
+--
+-- User Configurations
+--
+
+
+
+
+
+
+
+
+--
+-- Databases
+--
+
+--
+-- Database "template1" dump
+--
+
+\connect template1
+
+--
 -- PostgreSQL database dump
 --
 
 -- Dumped from database version 16.9 (Postgres.app)
 -- Dumped by pg_dump version 16.9 (Postgres.app)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- PostgreSQL database dump complete
+--
+
+--
+-- Database "adalton" dump
+--
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.9 (Postgres.app)
+-- Dumped by pg_dump version 16.9 (Postgres.app)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: adalton; Type: DATABASE; Schema: -; Owner: adalton
+--
+
+CREATE DATABASE adalton WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.UTF-8';
+
+
+ALTER DATABASE adalton OWNER TO adalton;
+
+\connect adalton
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- PostgreSQL database dump complete
+--
+
+--
+-- Database "alert_hub" dump
+--
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.9 (Postgres.app)
+-- Dumped by pg_dump version 16.9 (Postgres.app)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: alert_hub; Type: DATABASE; Schema: -; Owner: adalton
+--
+
+CREATE DATABASE alert_hub WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'en_US.UTF-8';
+
+
+ALTER DATABASE alert_hub OWNER TO adalton;
+
+\connect alert_hub
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -219,7 +354,10 @@ CREATE TABLE public.services (
     component_type character varying(50),
     created_at timestamp without time zone DEFAULT now(),
     last_seen timestamp without time zone DEFAULT now(),
-    tags text[] DEFAULT '{}'::text[]
+    tags text[] DEFAULT '{}'::text[],
+    external_calls jsonb DEFAULT '[]'::jsonb,
+    database_calls jsonb DEFAULT '[]'::jsonb,
+    rpc_calls jsonb DEFAULT '[]'::jsonb
 );
 
 
@@ -307,11 +445,22 @@ COPY public.namespace_dependencies (id, from_namespace, to_namespace, created_by
 --
 
 COPY public.service_dependencies (id, from_service_id, to_service_id, created_at, last_seen) FROM stdin;
+950	145	136	2025-07-06 12:22:50.55712	2025-07-06 12:22:50.55712
+951	145	142	2025-07-06 12:22:50.55712	2025-07-06 12:22:50.55712
+952	145	143	2025-07-06 12:22:50.55712	2025-07-06 12:22:50.55712
+953	145	140	2025-07-06 12:22:50.55712	2025-07-06 12:22:50.55712
 46	3	1	2025-06-27 13:28:39.071563	2025-06-27 13:28:39.071563
 47	3	2	2025-06-27 13:28:39.071563	2025-06-27 13:28:39.071563
 48	7	6	2025-06-27 13:28:39.090374	2025-06-27 13:28:39.090374
 49	130	1	2025-06-28 13:03:48.604944	2025-06-28 13:03:48.604944
 50	133	132	2025-06-28 13:03:48.63542	2025-06-28 13:03:48.63542
+921	138	145	2025-07-06 12:22:29.148215	2025-07-06 12:22:29.148215
+925	320	147	2025-07-06 12:22:29.18953	2025-07-06 12:22:29.18953
+926	246	154	2025-07-06 12:22:29.196838	2025-07-06 12:22:29.196838
+927	246	136	2025-07-06 12:22:29.196838	2025-07-06 12:22:29.196838
+928	246	143	2025-07-06 12:22:29.196838	2025-07-06 12:22:29.196838
+929	246	249	2025-07-06 12:22:29.196838	2025-07-06 12:22:29.196838
+936	143	147	2025-07-06 12:22:33.439213	2025-07-06 12:22:33.439213
 \.
 
 
@@ -319,17 +468,36 @@ COPY public.service_dependencies (id, from_service_id, to_service_id, created_at
 -- Data for Name: services; Type: TABLE DATA; Schema: public; Owner: adalton
 --
 
-COPY public.services (id, service_namespace, service_name, environment, team, component_type, created_at, last_seen, tags) FROM stdin;
-129	Frontend	web-app	prod	Frontend	service	2025-06-28 13:03:48.591231	2025-06-28 13:03:48.591231	{frontend,critical,user-facing}
-130	Frontend	api-gateway	prod	Platform	service	2025-06-28 13:03:48.604944	2025-06-28 13:03:48.604944	{frontend,gateway,critical}
-133	Analytics	data-pipeline	prod	Data	service	2025-06-28 13:03:48.63542	2025-06-28 13:03:48.63542	{backend,batch,analytics}
-132	Payments	payment-processor	prod	Payments	service	2025-06-28 13:03:48.627092	2025-06-28 13:03:48.63542	{backend,critical,financial}
-1	MetaSetter	ingester	prod	SRE	service	2025-06-27 12:31:43.05487	2025-06-28 13:03:48.643783	{backend,ingestion,high-volume}
-2	MetaSetter	parser	prod	SRE	service	2025-06-27 12:31:43.071187	2025-06-28 13:03:48.650413	{backend,processing,data-transformation}
-135	Legacy	old-service	prod	Legacy	service	2025-06-28 13:03:48.788998	2025-06-28 13:03:48.788998	{}
-3	MetaSetter	transformer	prod	SRE	service	2025-06-27 12:31:43.078699	2025-06-27 13:28:39.071563	{}
-7	MetaSetter	storage	prod	SRE	service	2025-06-27 12:31:43.106538	2025-06-27 13:28:39.090374	{}
-6	Infrastructure	postgres	prod	Platform	database	2025-06-27 12:31:43.099681	2025-06-27 13:28:39.090374	{}
+COPY public.services (id, service_namespace, service_name, environment, team, component_type, created_at, last_seen, tags, external_calls, database_calls, rpc_calls) FROM stdin;
+129	Frontend	web-app	prod	Frontend	service	2025-06-28 13:03:48.591231	2025-06-28 13:03:48.591231	{frontend,critical,user-facing}	[]	[]	[]
+130	Frontend	api-gateway	prod	Platform	service	2025-06-28 13:03:48.604944	2025-06-28 13:03:48.604944	{frontend,gateway,critical}	[]	[]	[]
+133	Analytics	data-pipeline	prod	Data	service	2025-06-28 13:03:48.63542	2025-06-28 13:03:48.63542	{backend,batch,analytics}	[]	[]	[]
+132	Payments	payment-processor	prod	Payments	service	2025-06-28 13:03:48.627092	2025-06-28 13:03:48.63542	{backend,critical,financial}	[]	[]	[]
+1	MetaSetter	ingester	prod	SRE	service	2025-06-27 12:31:43.05487	2025-06-28 13:03:48.643783	{backend,ingestion,high-volume}	[]	[]	[]
+2	MetaSetter	parser	prod	SRE	service	2025-06-27 12:31:43.071187	2025-06-28 13:03:48.650413	{backend,processing,data-transformation}	[]	[]	[]
+135	Legacy	old-service	prod	Legacy	service	2025-06-28 13:03:48.788998	2025-06-28 13:03:48.788998	{}	[]	[]	[]
+137	opentelemetry-demo	load-generator	unknown	\N	service	2025-07-04 19:01:24.971997	2025-07-06 12:22:49.89116	{version:2.0.2,signal:logs}	[]	[]	[]
+145	opentelemetry-demo	frontend	unknown	\N	frontend	2025-07-04 19:01:27.963687	2025-07-06 12:22:50.55712	{nodejs,version:2.0.2,signal:traces}	[{"host": "metadata.google.internal.", "path": "/computeMetadata/v1/instance", "count": 1, "method": "GET"}, {"host": "169.254.169.254", "path": "/computeMetadata/v1/instance", "count": 1, "method": "GET"}]	[]	[{"count": 12, "method": "GetAds", "service": "oteldemo.AdService"}, {"count": 122, "method": "GetProduct", "service": "oteldemo.ProductCatalogService"}, {"count": 22, "method": "AddItem", "service": "oteldemo.CartService"}, {"count": 39, "method": "GetCart", "service": "oteldemo.CartService"}, {"count": 5, "method": "PlaceOrder", "service": "oteldemo.CheckoutService"}, {"count": 11, "method": "ListRecommendations", "service": "oteldemo.RecommendationService"}]
+144	opentelemetry-demo	accounting	unknown	\N	service	2025-07-04 19:01:27.177905	2025-07-06 12:22:29.109033	{critical,dotnet,version:2.0.2,signal:metrics}	[]	[]	[]
+156	opentelemetry-demo	kafka	unknown	\N	queue	2025-07-04 19:01:33.447378	2025-07-06 12:22:29.125854	{version:2.0.2,signal:logs}	[]	[]	[]
+245	opentelemetry-demo	quote	unknown	\N	service	2025-07-05 12:27:41.174705	2025-07-06 12:22:29.131391	{version:2.0.2,signal:metrics}	[]	[]	[]
+243	opentelemetry-demo	currency	unknown	\N	service	2025-07-05 12:27:40.157217	2025-07-06 12:22:29.137092	{version:2.0.2,signal:metrics}	[]	[]	[]
+141	default	frontend-proxy	unknown	\N	gateway	2025-07-04 19:01:25.951535	2025-07-06 12:22:29.173971	{signal:logs}	[]	[]	[]
+146	default	otelcol-contrib	unknown	\N	service	2025-07-04 19:01:28.385588	2025-07-06 12:22:29.183085	{version:0.128.0,signal:metrics}	[]	[]	[]
+255	opentelemetry-demo	email	unknown	\N	service	2025-07-05 12:27:42.799301	2025-07-06 12:22:29.193445	{ruby,version:2.0.2,signal:metrics}	[]	[]	[]
+154	opentelemetry-demo	payment	unknown	\N	service	2025-07-04 19:01:31.802339	2025-07-06 12:22:29.196838	{critical,nodejs,version:2.0.2,signal:metrics}	[]	[]	[]
+249	opentelemetry-demo	shipping	unknown	\N	service	2025-07-05 12:27:41.769292	2025-07-06 12:22:29.196838	{version:2.0.2,signal:metrics}	[]	[]	[]
+3	MetaSetter	transformer	prod	SRE	service	2025-06-27 12:31:43.078699	2025-06-27 13:28:39.071563	{}	[]	[]	[]
+7	MetaSetter	storage	prod	SRE	service	2025-06-27 12:31:43.106538	2025-06-27 13:28:39.090374	{}	[]	[]	[]
+6	Infrastructure	postgres	prod	Platform	database	2025-06-27 12:31:43.099681	2025-06-27 13:28:39.090374	{}	[]	[]	[]
+138	opentelemetry-demo	frontend-proxy	unknown	\N	gateway	2025-07-04 19:01:24.970915	2025-07-06 12:22:49.754549	{version:2.0.2,signal:traces}	[]	[]	[]
+147	opentelemetry-demo	flagd	unknown	\N	service	2025-07-04 19:01:28.771305	2025-07-06 12:22:49.754549	{version:v0.12.5,signal:traces}	[]	[]	[{"count": 5, "method": "EventStream", "service": "flagd.evaluation.v1.Service"}, {"count": 18, "method": "ResolveBoolean", "service": "flagd.evaluation.v1.Service"}, {"count": 1, "method": "ResolveFloat", "service": "flagd.evaluation.v1.Service"}, {"count": 2, "method": "ResolveInt", "service": "flagd.evaluation.v1.Service"}]
+136	opentelemetry-demo	product-catalog	unknown	\N	service	2025-07-04 19:01:24.971696	2025-07-06 12:22:50.55712	{golang,version:2.0.2,signal:traces}	[]	[]	[{"count": 130, "method": "GetProduct", "service": "oteldemo.ProductCatalogService"}, {"count": 11, "method": "ListProducts", "service": "oteldemo.ProductCatalogService"}]
+320	opentelemetry-demo	fraud-detection	unknown	\N	service	2025-07-05 12:28:06.467755	2025-07-06 12:22:29.18953	{version:2.0.2,signal:metrics}	[]	[]	[]
+142	opentelemetry-demo	recommendation	unknown	\N	service	2025-07-04 19:01:26.358012	2025-07-06 12:22:50.55712	{version:2.0.2,signal:metrics}	[]	[]	[]
+143	opentelemetry-demo	cart	unknown	\N	service	2025-07-04 19:01:26.557576	2025-07-06 12:22:50.55712	{version:2.0.2,signal:traces}	[]	[{"count": 25, "system": "redis", "operation": "HMSET"}, {"count": 25, "system": "redis", "operation": "EXPIRE"}, {"count": 64, "system": "redis", "operation": "HGET"}]	[{"count": 3, "method": "ResolveBoolean", "service": "flagd.evaluation.v1.Service"}]
+140	opentelemetry-demo	ad	unknown	\N	service	2025-07-04 19:01:25.54521	2025-07-06 12:22:50.55712	{version:2.0.2,signal:metrics}	[]	[]	[]
+246	opentelemetry-demo	checkout	unknown	\N	service	2025-07-05 12:27:41.593054	2025-07-06 12:22:29.196838	{critical,golang,version:2.0.2,signal:metrics}	[]	[]	[]
 \.
 
 
@@ -351,14 +519,14 @@ SELECT pg_catalog.setval('public.namespace_dependencies_id_seq', 3, true);
 -- Name: service_dependencies_id_seq; Type: SEQUENCE SET; Schema: public; Owner: adalton
 --
 
-SELECT pg_catalog.setval('public.service_dependencies_id_seq', 50, true);
+SELECT pg_catalog.setval('public.service_dependencies_id_seq', 953, true);
 
 
 --
 -- Name: services_id_seq; Type: SEQUENCE SET; Schema: public; Owner: adalton
 --
 
-SELECT pg_catalog.setval('public.services_id_seq', 135, true);
+SELECT pg_catalog.setval('public.services_id_seq', 5463, true);
 
 
 --
@@ -556,5 +724,37 @@ ALTER TABLE ONLY public.service_dependencies
 
 --
 -- PostgreSQL database dump complete
+--
+
+--
+-- Database "postgres" dump
+--
+
+\connect postgres
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.9 (Postgres.app)
+-- Dumped by pg_dump version 16.9 (Postgres.app)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- PostgreSQL database dump complete
+--
+
+--
+-- PostgreSQL database cluster dump complete
 --
 
