@@ -1,0 +1,246 @@
+{
+  "services": [
+    {
+      "service_namespace": "Frontend",
+      "service_name": "web-app",
+      "environment": "prod",
+      "team": "Frontend",
+      "component_type": "service",
+      "tags": ["frontend", "critical", "user-facing"],
+      "depends_on": [
+        {"service_namespace": "Frontend", "service_name": "api-gateway"}
+      ],
+      "external_calls": [
+        {"host": "api.stripe.com", "method": "POST", "path": "/v1/charges", "count": 45},
+        {"host": "maps.googleapis.com", "method": "GET", "path": "/maps/api/geocode", "count": 12}
+      ]
+    },
+    {
+      "service_namespace": "Frontend",
+      "service_name": "api-gateway",
+      "environment": "prod",
+      "team": "Platform",
+      "component_type": "gateway",
+      "tags": ["frontend", "gateway", "critical"],
+      "depends_on": [
+        {"service_namespace": "MetaSetter", "service_name": "ingester"},
+        {"service_namespace": "Payments", "service_name": "payment-processor"}
+      ],
+      "rpc_calls": [
+        {"service": "UserService", "method": "GetUser", "count": 234},
+        {"service": "AuthService", "method": "ValidateToken", "count": 456}
+      ]
+    },
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "ingester",
+      "environment": "prod",
+      "team": "SRE",
+      "component_type": "service",
+      "tags": ["backend", "ingestion", "high-volume"],
+      "depends_on": [
+        {"service_namespace": "MetaSetter", "service_name": "parser"},
+        {"service_namespace": "Infrastructure", "service_name": "postgres"}
+      ],
+      "database_calls": [
+        {"system": "postgresql", "name": "events", "host": "postgres-primary:5432", "operation": "INSERT", "count": 1234},
+        {"system": "redis", "name": "cache", "host": "redis-cluster:6379", "operation": "GET", "count": 567}
+      ]
+    },
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "parser",
+      "environment": "prod",
+      "team": "SRE", 
+      "component_type": "service",
+      "tags": ["backend", "processing", "data-transformation"],
+      "depends_on": [
+        {"service_namespace": "Infrastructure", "service_name": "postgres"}
+      ],
+      "external_calls": [
+        {"host": "api.openweathermap.org", "method": "GET", "path": "/data/2.5/weather", "count": 89}
+      ]
+    },
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "transformer",
+      "environment": "prod",
+      "team": "SRE",
+      "component_type": "service", 
+      "tags": ["backend", "transformation"],
+      "depends_on": [
+        {"service_namespace": "MetaSetter", "service_name": "ingester"},
+        {"service_namespace": "MetaSetter", "service_name": "parser"}
+      ]
+    },
+    {
+      "service_namespace": "Payments",
+      "service_name": "payment-processor",
+      "environment": "prod",
+      "team": "Payments",
+      "component_type": "service",
+      "tags": ["backend", "critical", "financial"],
+      "depends_on": [
+        {"service_namespace": "Infrastructure", "service_name": "postgres"}
+      ],
+      "external_calls": [
+        {"host": "api.stripe.com", "method": "POST", "path": "/v1/payment_intents", "count": 234},
+        {"host": "api.paypal.com", "method": "POST", "path": "/v2/payments", "count": 67}
+      ],
+      "database_calls": [
+        {"system": "postgresql", "name": "payments", "host": "postgres-payments:5432", "operation": "INSERT", "count": 345}
+      ]
+    },
+    {
+      "service_namespace": "Analytics",
+      "service_name": "data-pipeline",
+      "environment": "prod",
+      "team": "Data",
+      "component_type": "service",
+      "tags": ["backend", "batch", "analytics"],
+      "depends_on": [
+        {"service_namespace": "Payments", "service_name": "payment-processor"}
+      ],
+      "database_calls": [
+        {"system": "postgresql", "name": "analytics", "host": "postgres-analytics:5432", "operation": "SELECT", "count": 1567},
+        {"system": "clickhouse", "name": "events", "host": "clickhouse-cluster:8123", "operation": "INSERT", "count": 2345}
+      ]
+    },
+    {
+      "service_namespace": "Infrastructure", 
+      "service_name": "postgres",
+      "environment": "prod",
+      "team": "Platform",
+      "component_type": "database",
+      "tags": ["database", "critical"],
+      "depends_on": []
+    },
+    {
+      "service_namespace": "Monitoring",
+      "service_name": "prometheus",
+      "environment": "prod", 
+      "team": "SRE",
+      "component_type": "monitoring",
+      "tags": ["monitoring", "metrics"],
+      "depends_on": []
+    },
+    {
+      "service_namespace": "Legacy",
+      "service_name": "old-service",
+      "environment": "prod",
+      "team": "Legacy",
+      "component_type": "service",
+      "tags": ["legacy", "deprecated"],
+      "depends_on": []
+    }
+  ],
+  
+  "namespace_dependencies": [
+    {
+      "from_namespace": "Frontend",
+      "to_namespace": "MetaSetter", 
+      "created_by": "test-script",
+      "dependency_type": "business",
+      "description": "Frontend services depend on MetaSetter APIs for data processing"
+    },
+    {
+      "from_namespace": "Frontend",
+      "to_namespace": "Payments",
+      "created_by": "test-script", 
+      "dependency_type": "business",
+      "description": "Frontend needs payment services for transactions"
+    },
+    {
+      "from_namespace": "Analytics",
+      "to_namespace": "Payments",
+      "created_by": "test-script",
+      "dependency_type": "data-flow", 
+      "description": "Analytics processes payment data for reporting"
+    },
+    {
+      "from_namespace": "MetaSetter",
+      "to_namespace": "Infrastructure",
+      "created_by": "test-script",
+      "dependency_type": "infrastructure",
+      "description": "MetaSetter services depend on infrastructure components"
+    }
+  ],
+
+  "alerts": [
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "ingester",
+      "instance_id": "ing_001",
+      "severity": "critical",
+      "message": "High latency detected - 95th percentile > 5s",
+      "alert_source": "prometheus"
+    },
+    {
+      "service_namespace": "MetaSetter", 
+      "service_name": "ingester",
+      "instance_id": "ing_002",
+      "severity": "warning",
+      "message": "Memory usage at 85%",
+      "alert_source": "prometheus"
+    },
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "parser",
+      "instance_id": "parser_002",
+      "severity": "warning",
+      "message": "Memory usage at 85%",
+      "alert_source": "grafana"
+    },
+    {
+      "service_namespace": "Payments",
+      "service_name": "payment-processor",
+      "severity": "critical", 
+      "message": "Payment gateway timeout rate above threshold",
+      "alert_source": "alertmanager"
+    },
+    {
+      "service_namespace": "Infrastructure",
+      "service_name": "postgres",
+      "severity": "fatal",
+      "message": "Database connection pool exhausted",
+      "alert_source": "alertmanager"
+    },
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "transformer",
+      "instance_id": "transform_001", 
+      "severity": "warning",
+      "message": "Queue backlog growing",
+      "alert_source": "custom"
+    },
+    {
+      "service_namespace": "MetaSetter",
+      "service_name": "transformer",
+      "instance_id": "transform_002",
+      "severity": "critical",
+      "message": "Processing timeout exceeded", 
+      "alert_source": "jaeger"
+    },
+    {
+      "service_namespace": "Frontend",
+      "service_name": "web-app",
+      "severity": "warning",
+      "message": "High response time detected",
+      "alert_source": "synthetic-monitoring"
+    },
+    {
+      "service_namespace": "Analytics",
+      "service_name": "data-pipeline", 
+      "severity": "warning",
+      "message": "Batch job delay detected",
+      "alert_source": "airflow"
+    },
+    {
+      "service_namespace": "Legacy",
+      "service_name": "old-service",
+      "severity": "critical",
+      "message": "Service unresponsive for 10+ minutes",
+      "alert_source": "manual"
+    }
+  ]
+}
