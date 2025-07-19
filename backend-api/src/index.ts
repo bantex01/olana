@@ -2,8 +2,11 @@ import express from "express";
 import cors from "cors";
 import { Pool } from "pg";
 import dotenv from "dotenv";
-import ServiceCleanup from './services/ServiceCleanup';
 import path from "path";
+import { createHealthRoutes } from './routes/health';
+import ServiceCleanup from './services/ServiceCleanup';
+import { createTagsRoutes } from './routes/tags';
+import { createNamespaceDepsRoutes } from './routes/namespaceDeps';
 
 // Load environment variables
 //dotenv.config();
@@ -37,6 +40,10 @@ const cleanupConfig = {
 // Initialize ServiceCleanup (but don't start yet)
 const serviceCleanup = new ServiceCleanup(pool, cleanupConfig);
 
+app.use(createHealthRoutes(pool));
+app.use(createTagsRoutes(pool));
+app.use(createNamespaceDepsRoutes(pool));
+
 type Telemetry = {
   service_namespace: string;
   service_name: string;
@@ -60,14 +67,6 @@ type Alert = {
   message: string;
   alert_source?: string;
   external_alert_id?: string;
-};
-
-type NamespaceDependency = {
-  from_namespace: string;
-  to_namespace: string;
-  created_by?: string;
-  dependency_type?: string;
-  description?: string;
 };
 
 type GraphFilters = {
@@ -753,110 +752,6 @@ app.put("/services/:namespace/:name/tags", async (req, res) => {
   }
 });
 
-// Unchanged endpoints below
-app.get("/tags", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const result = await client.query(`
-      SELECT DISTINCT unnest(tags) as tag
-      FROM services
-      WHERE tags IS NOT NULL AND array_length(tags, 1) > 0
-      ORDER BY tag
-    `);
-    
-    const tags = result.rows.map(row => row.tag);
-    res.json({ tags });
-    
-  } catch (error) {
-    console.error('Tags fetch error:', error);
-    res.status(500).json({ error: "Failed to fetch tags" });
-  } finally {
-    client.release();
-  }
-});
-
-app.post("/namespace-dependencies", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const dep = req.body as NamespaceDependency;
-    
-    const result = await client.query(`
-      INSERT INTO namespace_dependencies (from_namespace, to_namespace, created_by, dependency_type, description)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (from_namespace, to_namespace)
-      DO UPDATE SET 
-        created_by = EXCLUDED.created_by,
-        dependency_type = EXCLUDED.dependency_type,
-        description = EXCLUDED.description,
-        updated_at = NOW()
-      RETURNING id
-    `, [dep.from_namespace, dep.to_namespace, dep.created_by || 'api', dep.dependency_type || 'manual', dep.description]);
-    
-    res.json({ 
-      status: "ok", 
-      dependency_id: result.rows[0].id,
-      from: dep.from_namespace,
-      to: dep.to_namespace
-    });
-    
-  } catch (error) {
-    console.error('Namespace dependency error:', error);
-    res.status(500).json({ error: "Failed to create namespace dependency" });
-  } finally {
-    client.release();
-  }
-});
-
-app.get("/namespace-dependencies", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const result = await client.query(`
-      SELECT id, from_namespace, to_namespace, created_by, dependency_type, description, created_at, updated_at
-      FROM namespace_dependencies
-      ORDER BY from_namespace, to_namespace
-    `);
-    
-    res.json(result.rows);
-    
-  } catch (error) {
-    console.error('Namespace dependencies fetch error:', error);
-    res.status(500).json({ error: "Failed to fetch namespace dependencies" });
-  } finally {
-    client.release();
-  }
-});
-
-app.delete("/namespace-dependencies/:id", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const dependencyId = parseInt(req.params.id);
-    
-    const result = await client.query(`
-      DELETE FROM namespace_dependencies WHERE id = $1
-      RETURNING from_namespace, to_namespace
-    `, [dependencyId]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Namespace dependency not found" });
-    }
-    
-    res.json({ 
-      status: "ok", 
-      deleted: result.rows[0]
-    });
-    
-  } catch (error) {
-    console.error('Delete namespace dependency error:', error);
-    res.status(500).json({ error: "Failed to delete namespace dependency" });
-  } finally {
-    client.release();
-  }
-});
-
 app.patch("/alerts/:alertId/resolve", async (req, res) => {
   const client = await pool.connect();
   
@@ -876,15 +771,6 @@ app.patch("/alerts/:alertId/resolve", async (req, res) => {
     res.status(500).json({ error: "Failed to resolve alert" });
   } finally {
     client.release();
-  }
-});
-
-app.get("/health", async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ status: "healthy", database: "connected" });
-  } catch (error) {
-    res.status(500).json({ status: "unhealthy", database: "disconnected" });
   }
 });
 
