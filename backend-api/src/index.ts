@@ -654,6 +654,7 @@ app.get("/alerts", async (req, res) => {
     // Build main alerts query
     let alertQuery = `
       SELECT 
+        a.id,
         a.service_namespace,
         a.service_name,
         a.instance_id,
@@ -693,6 +694,7 @@ app.get("/alerts", async (req, res) => {
     const alertsResult = await client.query(alertQuery, params);
     
     const alerts = alertsResult.rows.map((row: any) => ({
+      alert_id: row.id,
       service_namespace: row.service_namespace,
       service_name: row.service_name,
       instance_id: row.instance_id,
