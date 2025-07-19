@@ -7,6 +7,7 @@ import { createHealthRoutes } from './routes/health';
 import ServiceCleanup from './services/ServiceCleanup';
 import { createTagsRoutes } from './routes/tags';
 import { createNamespaceDepsRoutes } from './routes/namespaceDeps';
+import { createAlertsRoutes } from './routes/alerts';
 
 // Load environment variables
 //dotenv.config();
@@ -43,6 +44,7 @@ const serviceCleanup = new ServiceCleanup(pool, cleanupConfig);
 app.use(createHealthRoutes(pool));
 app.use(createTagsRoutes(pool));
 app.use(createNamespaceDepsRoutes(pool));
+app.use(createAlertsRoutes(pool));
 
 type Telemetry = {
   service_namespace: string;
@@ -747,28 +749,6 @@ app.put("/services/:namespace/:name/tags", async (req, res) => {
   } catch (error) {
     console.error('Tag update error:', error);
     res.status(500).json({ error: "Failed to update tags" });
-  } finally {
-    client.release();
-  }
-});
-
-app.patch("/alerts/:alertId/resolve", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const alertId = parseInt(req.params.alertId);
-    
-    await client.query(`
-      UPDATE alerts 
-      SET status = 'resolved', resolved_at = NOW()
-      WHERE id = $1 AND status = 'firing'
-    `, [alertId]);
-    
-    res.json({ status: "ok" });
-    
-  } catch (error) {
-    console.error('Resolve alert error:', error);
-    res.status(500).json({ error: "Failed to resolve alert" });
   } finally {
     client.release();
   }
