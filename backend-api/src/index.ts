@@ -9,6 +9,7 @@ import { createTagsRoutes } from './routes/tags';
 import { createNamespaceDepsRoutes } from './routes/namespaceDeps';
 import { createAlertsRoutes } from './routes/alerts';
 import { createServicesRoutes } from './routes/services';
+import { createTelemetryRoutes } from './routes/telemetry';
 
 // Load environment variables
 //dotenv.config();
@@ -47,31 +48,7 @@ app.use(createTagsRoutes(pool));
 app.use(createNamespaceDepsRoutes(pool));
 app.use(createAlertsRoutes(pool));
 app.use(createServicesRoutes(pool));
-
-type Telemetry = {
-  service_namespace: string;
-  service_name: string;
-  environment: string;
-  team: string;
-  component_type: string;
-  depends_on: { service_namespace: string; service_name: string }[];
-  tags?: string[];
-  
-  // Enrichment fields
-  external_calls?: { host: string; method?: string; path?: string; count: number }[];
-  database_calls?: { system: string; name?: string; host?: string; operation?: string; count: number }[];
-  rpc_calls?: { service: string; method?: string; count: number }[];
-};
-
-type Alert = {
-  service_namespace: string;
-  service_name: string;
-  instance_id?: string;
-  severity: "fatal" | "critical" | "warning" | "none";
-  message: string;
-  alert_source?: string;
-  external_alert_id?: string;
-};
+app.use(createTelemetryRoutes(pool));
 
 type GraphFilters = {
   tags?: string[];
@@ -80,72 +57,6 @@ type GraphFilters = {
   severities?: string[];
   environments?: string[];
 };
-
-// UPDATED: Upsert service and update dependencies using natural keys
-app.post("/telemetry", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    await client.query('BEGIN');
-    
-    const t = req.body as Telemetry;
-    
-    // Upsert service using natural key
-    await client.query(`
-      INSERT INTO services (service_namespace, service_name, environment, team, component_type, tags, external_calls, database_calls, rpc_calls, last_seen)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-      ON CONFLICT (service_namespace, service_name)
-      DO UPDATE SET 
-        environment = EXCLUDED.environment,
-        team = EXCLUDED.team,
-        component_type = EXCLUDED.component_type,
-        tags = EXCLUDED.tags,
-        external_calls = EXCLUDED.external_calls,
-        database_calls = EXCLUDED.database_calls,
-        rpc_calls = EXCLUDED.rpc_calls,
-        last_seen = NOW()
-    `, [t.service_namespace, t.service_name, t.environment, t.team, t.component_type, 
-        t.tags || [], 
-        JSON.stringify(t.external_calls || []), 
-        JSON.stringify(t.database_calls || []), 
-        JSON.stringify(t.rpc_calls || [])]);
-    
-    // Clear existing dependencies for this service using natural key
-    await client.query(`
-      DELETE FROM service_dependencies 
-      WHERE from_service_namespace = $1 AND from_service_name = $2
-    `, [t.service_namespace, t.service_name]);
-    
-    // Insert new dependencies using natural keys
-    for (const dep of t.depends_on) {
-      // Ensure target service exists (upsert with minimal data)
-      await client.query(`
-        INSERT INTO services (service_namespace, service_name, last_seen)
-        VALUES ($1, $2, NOW())
-        ON CONFLICT (service_namespace, service_name)
-        DO UPDATE SET last_seen = NOW()
-      `, [dep.service_namespace, dep.service_name]);
-      
-      // Create dependency using natural keys
-      await client.query(`
-        INSERT INTO service_dependencies (from_service_namespace, from_service_name, to_service_namespace, to_service_name, last_seen)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (from_service_namespace, from_service_name, to_service_namespace, to_service_name)
-        DO UPDATE SET last_seen = NOW()
-      `, [t.service_namespace, t.service_name, dep.service_namespace, dep.service_name]);
-    }
-    
-    await client.query('COMMIT');
-    res.json({ status: "ok" });
-    
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Telemetry error:', error);
-    res.status(500).json({ error: "Failed to process telemetry" });
-  } finally {
-    client.release();
-  }
-});
 
 // Service Cleanup Metrics Endpoint
 app.get("/metrics/cleanup", async (req, res) => {
@@ -551,124 +462,6 @@ app.get("/graph", async (req, res) => {
   } catch (error) {
     console.error('Graph error:', error);
     res.status(500).json({ error: "Failed to generate graph" });
-  } finally {
-    client.release();
-  }
-});
-
-// UPDATED: Get all active alerts using natural keys
-app.get("/alerts", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    console.log('=== ALERTS REQUEST ===');
-    console.log('Query params:', req.query);
-    
-    // Parse filters
-    const filters: any = {};
-    if (req.query.tags) filters.tags = (req.query.tags as string).split(',');
-    if (req.query.namespaces) filters.namespaces = (req.query.namespaces as string).split(',');
-    if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
-
-    // Get services that match our filters first (if any filters applied)
-    let serviceFilters = '';
-    let serviceParams: any[] = [];
-    
-    if (filters.tags || filters.namespaces) {
-      let serviceWhereConditions: string[] = [];
-
-      // Add tags filter if present
-      if (filters.tags && filters.tags.length > 0) {
-        serviceWhereConditions.push('s.tags && $1');
-        serviceParams.push(filters.tags);
-      }
-
-      // Add namespace filter if present
-      if (filters.namespaces && filters.namespaces.length > 0) {
-        const startIndex = serviceParams.length + 1;
-        if (filters.namespaces.length === 1) {
-          serviceWhereConditions.push(`s.service_namespace = $${startIndex}`);
-          serviceParams.push(filters.namespaces[0]);
-        } else {
-          const placeholders = filters.namespaces.map((_item: string, index: number) => `$${startIndex + index}`).join(', ');
-          serviceWhereConditions.push(`s.service_namespace IN (${placeholders})`);
-          serviceParams.push(...filters.namespaces);
-        }
-      }
-
-      if (serviceWhereConditions.length > 0) {
-        serviceFilters = `AND EXISTS (
-          SELECT 1 FROM services s 
-          WHERE s.service_namespace = a.service_namespace 
-            AND s.service_name = a.service_name 
-            AND ${serviceWhereConditions.join(' AND ')}
-        )`;
-      }
-    }
-
-    // Build main alerts query
-    let alertQuery = `
-      SELECT 
-        a.id,
-        a.service_namespace,
-        a.service_name,
-        a.instance_id,
-        a.severity,
-        a.message,
-        a.status,
-        a.count,
-        a.first_seen,
-        a.last_seen,
-        a.created_at,
-        a.resolved_at
-      FROM alerts a
-      WHERE a.status = 'firing'
-      ${serviceFilters}
-    `;
-    
-    let params = [...serviceParams];
-
-    // Add severity filter if present
-    if (filters.severities && filters.severities.length > 0) {
-      const severityStartIndex = params.length + 1;
-      if (filters.severities.length === 1) {
-        alertQuery += ` AND a.severity = $${severityStartIndex}`;
-        params.push(filters.severities[0]);
-      } else {
-        const placeholders = filters.severities.map((_item: string, index: number) => `$${severityStartIndex + index}`).join(', ');
-        alertQuery += ` AND a.severity IN (${placeholders})`;
-        params.push(...filters.severities);
-      }
-    }
-
-    alertQuery += ` ORDER BY a.last_seen DESC`;
-
-    console.log('Alert query:', alertQuery);
-    console.log('Alert params:', params);
-    
-    const alertsResult = await client.query(alertQuery, params);
-    
-    const alerts = alertsResult.rows.map((row: any) => ({
-      alert_id: row.id,
-      service_namespace: row.service_namespace,
-      service_name: row.service_name,
-      instance_id: row.instance_id,
-      severity: row.severity,
-      message: row.message,
-      status: row.status,
-      count: row.count,
-      first_seen: row.first_seen,
-      last_seen: row.last_seen,
-      created_at: row.created_at,
-      resolved_at: row.resolved_at
-    }));
-    
-    console.log(`Returning ${alerts.length} alerts`);
-    res.json(alerts);
-    
-  } catch (error) {
-    console.error('Alerts error:', error);
-    res.status(500).json({ error: "Failed to fetch alerts" });
   } finally {
     client.release();
   }
