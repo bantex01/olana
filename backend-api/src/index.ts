@@ -8,6 +8,7 @@ import ServiceCleanup from './services/ServiceCleanup';
 import { createTagsRoutes } from './routes/tags';
 import { createNamespaceDepsRoutes } from './routes/namespaceDeps';
 import { createAlertsRoutes } from './routes/alerts';
+import { createServicesRoutes } from './routes/services';
 
 // Load environment variables
 //dotenv.config();
@@ -45,6 +46,7 @@ app.use(createHealthRoutes(pool));
 app.use(createTagsRoutes(pool));
 app.use(createNamespaceDepsRoutes(pool));
 app.use(createAlertsRoutes(pool));
+app.use(createServicesRoutes(pool));
 
 type Telemetry = {
   service_namespace: string;
@@ -140,53 +142,6 @@ app.post("/telemetry", async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Telemetry error:', error);
     res.status(500).json({ error: "Failed to process telemetry" });
-  } finally {
-    client.release();
-  }
-});
-
-// UPDATED: Create new alert using natural keys
-app.post("/alerts", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const a = req.body as Alert;
-    
-    // Ensure the service exists (create if needed)
-    await client.query(`
-      INSERT INTO services (service_namespace, service_name, last_seen)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (service_namespace, service_name)
-      DO UPDATE SET last_seen = NOW()
-    `, [a.service_namespace, a.service_name]);
-    
-    // Insert or update alert using natural keys
-    const alertResult = await client.query(`
-      INSERT INTO alerts (service_namespace, service_name, instance_id, severity, message, alert_source, external_alert_id, count, first_seen, last_seen)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 1, NOW(), NOW())
-      ON CONFLICT (service_namespace, service_name, instance_id, severity, message)
-      DO UPDATE SET 
-        count = alerts.count + 1,
-        last_seen = NOW(),
-        status = 'firing',
-        alert_source = CASE WHEN EXCLUDED.alert_source IS NOT NULL THEN EXCLUDED.alert_source ELSE alerts.alert_source END,
-        external_alert_id = CASE WHEN EXCLUDED.external_alert_id IS NOT NULL THEN EXCLUDED.external_alert_id ELSE alerts.external_alert_id END
-      RETURNING id, count, (count = 1) as is_new_alert
-    `, [a.service_namespace, a.service_name, a.instance_id || '', a.severity, a.message, a.alert_source || 'manual', a.external_alert_id]);
-    
-    const result = alertResult.rows[0];
-    
-    res.json({ 
-      status: "ok", 
-      alert_id: result.id,
-      count: result.count,
-      is_new_alert: result.is_new_alert,
-      message: result.is_new_alert ? "New alert created" : `Alert count incremented to ${result.count}`
-    });
-    
-  } catch (error) {
-    console.error('Alert error:', error);
-    res.status(500).json({ error: "Failed to create alert" });
   } finally {
     client.release();
   }
@@ -714,43 +669,6 @@ app.get("/alerts", async (req, res) => {
   } catch (error) {
     console.error('Alerts error:', error);
     res.status(500).json({ error: "Failed to fetch alerts" });
-  } finally {
-    client.release();
-  }
-});
-
-// UPDATED: Tag management using natural keys
-app.put("/services/:namespace/:name/tags", async (req, res) => {
-  const client = await pool.connect();
-  
-  try {
-    const { namespace, name } = req.params;
-    const { tags } = req.body;
-    
-    if (!Array.isArray(tags)) {
-      return res.status(400).json({ error: "Tags must be an array" });
-    }
-    
-    const result = await client.query(`
-      UPDATE services 
-      SET tags = $1, last_seen = NOW()
-      WHERE service_namespace = $2 AND service_name = $3
-      RETURNING service_namespace, service_name, tags
-    `, [tags, namespace, name]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Service not found" });
-    }
-    
-    res.json({ 
-      status: "ok", 
-      service: `${namespace}::${name}`,
-      tags: result.rows[0].tags 
-    });
-    
-  } catch (error) {
-    console.error('Tag update error:', error);
-    res.status(500).json({ error: "Failed to update tags" });
   } finally {
     client.release();
   }
