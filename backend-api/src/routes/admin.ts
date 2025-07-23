@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
 import ServiceCleanup from '../services/ServiceCleanup';
+import { getServiceCreationStats } from '../utils/serviceAutoCreate';
 
 type CleanupConfig = {
   ttlHours: number;
@@ -90,6 +91,27 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
         res.status(500).json({ error: "Failed to cleanup orphaned dependencies" });
     }
     });
+
+      router.get("/admin/alertmanager/status", async (req, res) => {
+    try {
+      const serviceStats = await getServiceCreationStats(pool);
+      
+      res.json({
+        webhook: {
+          enabled: cleanupConfig.enabled, // This should reference alertmanager config if available
+          endpoint: "/webhooks/alertmanager"
+        },
+        services: serviceStats,
+        integration: {
+          status: "active",
+          lastProcessed: null // Could track this in future
+        }
+      });
+    } catch (error) {
+      console.error('Alertmanager status error:', error);
+      res.status(500).json({ error: "Failed to fetch alertmanager status" });
+    }
+  });
 
   return router;
 }
