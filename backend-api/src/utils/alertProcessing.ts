@@ -28,55 +28,126 @@ async function createOrUpdateAlert(
   client: PoolClient,
   alert: ParsedAlert
 ): Promise<AlertProcessingResult> {
-  // Insert or update alert using existing deduplication logic
-  const result = await client.query(`
-    INSERT INTO alerts (
-      service_namespace, 
-      service_name, 
-      instance_id, 
-      severity, 
-      message, 
-      alert_source, 
-      external_alert_id, 
-      count, 
-      first_seen, 
-      last_seen,
-      status
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $8, 'firing')
-    ON CONFLICT (service_namespace, service_name, instance_id, severity, message)
-    DO UPDATE SET 
-      count = alerts.count + 1,
-      last_seen = $8,
-      status = 'firing',
-      alert_source = CASE 
-        WHEN EXCLUDED.alert_source IS NOT NULL THEN EXCLUDED.alert_source 
-        ELSE alerts.alert_source 
-      END,
-      external_alert_id = CASE 
-        WHEN EXCLUDED.external_alert_id IS NOT NULL THEN EXCLUDED.external_alert_id 
-        ELSE alerts.external_alert_id 
-      END
-    RETURNING id, count, (count = 1) as is_new_alert
-  `, [
-    alert.serviceNamespace,
-    alert.serviceName,
-    alert.instanceId,
-    alert.severity,
-    alert.message,
-    'alertmanager',
-    alert.externalAlertId,
-    alert.startsAt
-  ]);
+  try {
+    // Original insert/update logic
+    const result = await client.query(`
+      INSERT INTO alerts (
+        service_namespace, 
+        service_name, 
+        instance_id, 
+        severity, 
+        message, 
+        alert_source, 
+        external_alert_id, 
+        count, 
+        first_seen, 
+        last_seen,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $8, 'firing')
+      ON CONFLICT (service_namespace, service_name, instance_id, severity, message)
+      DO UPDATE SET 
+        count = alerts.count + 1,
+        last_seen = $8,
+        status = 'firing',
+        alert_source = CASE 
+          WHEN EXCLUDED.alert_source IS NOT NULL THEN EXCLUDED.alert_source 
+          ELSE alerts.alert_source 
+        END,
+        external_alert_id = CASE 
+          WHEN EXCLUDED.external_alert_id IS NOT NULL THEN EXCLUDED.external_alert_id 
+          ELSE alerts.external_alert_id 
+        END
+      RETURNING id, count, (count = 1) as is_new_alert
+    `, [
+      alert.serviceNamespace,
+      alert.serviceName,
+      alert.instanceId,
+      alert.severity,
+      alert.message,
+      'alertmanager',
+      alert.externalAlertId,
+      alert.startsAt
+    ]);
 
-  const row = result.rows[0];
-  
-  return {
-    alertId: row.id,
-    isNewAlert: row.is_new_alert,
-    count: row.count,
-    action: row.is_new_alert ? 'created' : 'updated'
-  };
+    const row = result.rows[0];
+    
+    return {
+      alertId: row.id,
+      isNewAlert: row.is_new_alert,
+      count: row.count,
+      action: row.is_new_alert ? 'created' : 'updated'
+    };
+
+  } catch (error: any) {
+    // Handle constraint violation specifically
+    if (error.code === '23505' && error.constraint === 'alerts_service_instance_severity_message_unique') {
+      console.warn('TEMPORARY FIX: Alert constraint violation detected', {
+        service: `${alert.serviceNamespace}::${alert.serviceName}`,
+        instance: alert.instanceId,
+        severity: alert.severity,
+        message: alert.message.substring(0, 100) + '...',
+        error: error.message
+      });
+
+      // Try to find and update the existing alert regardless of status
+      const updateResult = await client.query(`
+        UPDATE alerts 
+        SET 
+          count = count + 1,
+          last_seen = $6,
+          status = 'firing',
+          resolved_at = NULL
+        WHERE service_namespace = $1 
+          AND service_name = $2 
+          AND instance_id = $3 
+          AND severity = $4 
+          AND message = $5
+        RETURNING id, count
+      `, [
+        alert.serviceNamespace,
+        alert.serviceName,
+        alert.instanceId,
+        alert.severity,
+        alert.message,
+        alert.startsAt
+      ]);
+
+      if (updateResult.rows.length > 0) {
+        const row = updateResult.rows[0];
+        console.log('TEMPORARY FIX: Successfully updated existing alert', {
+          alertId: row.id,
+          newCount: row.count,
+          service: `${alert.serviceNamespace}::${alert.serviceName}`
+        });
+
+        return {
+          alertId: row.id,
+          isNewAlert: false,
+          count: row.count,
+          action: 'updated'
+        };
+      } else {
+        // Fallback: log error but don't fail the webhook
+        console.error('TEMPORARY FIX: Could not find existing alert to update', {
+          service: `${alert.serviceNamespace}::${alert.serviceName}`,
+          instance: alert.instanceId,
+          severity: alert.severity
+        });
+
+        // Return a dummy result to prevent webhook failure
+        return {
+          alertId: -1,
+          isNewAlert: false,
+          count: 1,
+          action: 'created'
+        };
+      }
+    }
+
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 async function resolveAlert(

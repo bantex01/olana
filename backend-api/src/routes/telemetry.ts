@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
+import { upsertService, ServiceUpdateData } from '../utils/serviceManager';
 
 type Telemetry = {
   service_namespace: string;
@@ -19,71 +20,90 @@ type Telemetry = {
 export function createTelemetryRoutes(pool: Pool): Router {
   const router = Router();
 
-  // UPDATED: Upsert service and update dependencies using natural keys
-    router.post("/telemetry", async (req, res) => {
+  // UPDATED: Upsert service and update dependencies using unified service manager
+  router.post("/telemetry", async (req, res) => {
     const client = await pool.connect();
     
     try {
-        await client.query('BEGIN');
-        
-        const t = req.body as Telemetry;
-        
-        // Upsert service using natural key
-        await client.query(`
-        INSERT INTO services (service_namespace, service_name, environment, team, component_type, tags, external_calls, database_calls, rpc_calls, last_seen)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-        ON CONFLICT (service_namespace, service_name)
-        DO UPDATE SET 
-            environment = EXCLUDED.environment,
-            team = EXCLUDED.team,
-            component_type = EXCLUDED.component_type,
-            tags = EXCLUDED.tags,
-            external_calls = EXCLUDED.external_calls,
-            database_calls = EXCLUDED.database_calls,
-            rpc_calls = EXCLUDED.rpc_calls,
-            last_seen = NOW()
-        `, [t.service_namespace, t.service_name, t.environment, t.team, t.component_type, 
-            t.tags || [], 
-            JSON.stringify(t.external_calls || []), 
-            JSON.stringify(t.database_calls || []), 
-            JSON.stringify(t.rpc_calls || [])]);
-        
-        // Clear existing dependencies for this service using natural key
-        await client.query(`
+      await client.query('BEGIN');
+      
+      const t = req.body as Telemetry;
+      
+      console.log('Processing OTEL telemetry', {
+        service: `${t.service_namespace}::${t.service_name}`,
+        tagCount: t.tags?.length || 0,
+        dependencyCount: t.depends_on?.length || 0,
+        hasEnrichment: !!(t.external_calls?.length || t.database_calls?.length || t.rpc_calls?.length)
+      });
+
+      // Convert telemetry data to ServiceUpdateData format
+      const serviceUpdate: ServiceUpdateData = {
+        service_namespace: t.service_namespace,
+        service_name: t.service_name,
+        environment: t.environment || 'unknown',
+        team: t.team || 'unknown',
+        component_type: t.component_type || 'service',
+        tags: t.tags || [],
+        external_calls: t.external_calls || [],
+        database_calls: t.database_calls || [],
+        rpc_calls: t.rpc_calls || [],
+        source: 'otel'
+      };
+
+      // Use unified upsert with tag merging
+      const upsertResult = await upsertService(client, serviceUpdate);
+      
+      console.log('OTEL service upsert completed', {
+        service: `${t.service_namespace}::${t.service_name}`,
+        created: upsertResult.created,
+        updated: upsertResult.updated,
+        tagChanges: upsertResult.tagChanges
+      });
+
+      // Handle service dependencies (unchanged logic)
+      // Clear existing dependencies for this service using natural key
+      await client.query(`
         DELETE FROM service_dependencies 
         WHERE from_service_namespace = $1 AND from_service_name = $2
-        `, [t.service_namespace, t.service_name]);
-        
-        // Insert new dependencies using natural keys
-        for (const dep of t.depends_on) {
+      `, [t.service_namespace, t.service_name]);
+      
+      // Insert new dependencies using natural keys
+      for (const dep of t.depends_on || []) {
         // Ensure target service exists (upsert with minimal data)
-        await client.query(`
-            INSERT INTO services (service_namespace, service_name, last_seen)
-            VALUES ($1, $2, NOW())
-            ON CONFLICT (service_namespace, service_name)
-            DO UPDATE SET last_seen = NOW()
-        `, [dep.service_namespace, dep.service_name]);
+        const targetServiceUpdate: ServiceUpdateData = {
+          service_namespace: dep.service_namespace,
+          service_name: dep.service_name,
+          source: 'otel'
+        };
+        
+        await upsertService(client, targetServiceUpdate);
         
         // Create dependency using natural keys
         await client.query(`
-            INSERT INTO service_dependencies (from_service_namespace, from_service_name, to_service_namespace, to_service_name, last_seen)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (from_service_namespace, from_service_name, to_service_namespace, to_service_name)
-            DO UPDATE SET last_seen = NOW()
+          INSERT INTO service_dependencies (from_service_namespace, from_service_name, to_service_namespace, to_service_name, last_seen)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT (from_service_namespace, from_service_name, to_service_namespace, to_service_name)
+          DO UPDATE SET last_seen = NOW()
         `, [t.service_namespace, t.service_name, dep.service_namespace, dep.service_name]);
-        }
-        
-        await client.query('COMMIT');
-        res.json({ status: "ok" });
-        
+      }
+      
+      await client.query('COMMIT');
+      
+      res.json({ 
+        status: "ok",
+        service: `${t.service_namespace}::${t.service_name}`,
+        created: upsertResult.created,
+        tagChanges: upsertResult.tagChanges.length
+      });
+      
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Telemetry error:', error);
-        res.status(500).json({ error: "Failed to process telemetry" });
+      await client.query('ROLLBACK');
+      console.error('Telemetry processing error:', error);
+      res.status(500).json({ error: "Failed to process telemetry" });
     } finally {
-        client.release();
+      client.release();
     }
-    });
+  });
 
   return router;
-}  
+}

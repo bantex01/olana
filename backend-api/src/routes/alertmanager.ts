@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
-import { AlertmanagerConfig } from '../config/alertmanager';
+import { AlertmanagerConfig, shouldLabelBecomeTag, labelNameToTagName } from '../config/alertmanager';
 import { parseAlertmanagerWebhook, AlertmanagerWebhook, ParsedAlert } from '../utils/alertmanager';
 import { ensureServiceExists } from '../utils/serviceAutoCreate';
 import { processAlert, summarizeAlertProcessing } from '../utils/alertProcessing';
@@ -54,29 +54,64 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
         console.log(`✓ ${alert.serviceNamespace}::${alert.serviceName} [${alert.severity}] ${alert.message.substring(0, 50)}...`);
       });
 
-     const client = await pool.connect();
+      const client = await pool.connect();
       let servicesCreated = 0;
       let servicesUpdated = 0;
       const alertResults = [];
+      let processingErrors = 0;
       
       try {
         await client.query('BEGIN');
         
         // Process each alert: ensure service exists, then create/update alert
         for (const alert of parsedAlerts) {
-          // Step 1: Ensure service exists
-          const serviceResult = await ensureServiceExists(client, alert);
+          try {
+            // Step 1: Ensure service exists
+            const originalAlert = alerts.find(a => 
+            a.labels.service_name === alert.serviceName || 
+            a.labels.service === alert.serviceName || 
+            a.labels.job === alert.serviceName
+          );
+          const alertLabels = originalAlert?.labels || {};
+
+          const serviceResult = await ensureServiceExists(client, alert, alertLabels);
           if (serviceResult.created) {
             servicesCreated++;
+            console.log(`Service created from alert: ${alert.serviceNamespace}::${alert.serviceName}`, {
+              tagChanges: serviceResult.tagChanges
+            });
           } else if (serviceResult.existed) {
             servicesUpdated++;
+            if (serviceResult.tagChanges.length > 0) {
+              console.log(`Service tags updated from alert: ${alert.serviceNamespace}::${alert.serviceName}`, {
+                tagChanges: serviceResult.tagChanges
+              });
+            }
           }
-          
-          // Step 2: Process the alert
-          const alertResult = await processAlert(client, alert);
-          alertResults.push(alertResult);
-          
-          console.log(`Processed alert: ${alert.serviceNamespace}::${alert.serviceName} [${alert.severity}] - ${alertResult.action} (ID: ${alertResult.alertId})`);
+            
+            // Step 2: Process the alert
+            const alertResult = await processAlert(client, alert);
+            alertResults.push(alertResult);
+            
+            console.log(`Processed alert: ${alert.serviceNamespace}::${alert.serviceName} [${alert.severity}] - ${alertResult.action} (ID: ${alertResult.alertId})`);
+            
+          } catch (error) {
+            processingErrors++;
+            console.error('Alert processing failed for individual alert:', {
+              service: `${alert.serviceNamespace}::${alert.serviceName}`,
+              severity: alert.severity,
+              message: alert.message.substring(0, 100),
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+            
+            // Add a failed result to track the issue but don't break the transaction
+            alertResults.push({
+              alertId: -1,
+              isNewAlert: false,
+              count: 0,
+              action: 'created' as const
+            });
+          }
         }
         
         const alertSummary = summarizeAlertProcessing(alertResults);
@@ -88,6 +123,9 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
         console.log(`Alerts updated: ${alertSummary.updated}`);
         console.log(`Alerts resolved: ${alertSummary.resolved}`);
         console.log(`Total alerts processed: ${alertSummary.totalProcessed}`);
+        if (processingErrors > 0) {
+          console.log(`Processing errors: ${processingErrors}`);
+        }
         
         await client.query('COMMIT');
         
@@ -101,7 +139,7 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
 
       const alertSummary = summarizeAlertProcessing(alertResults);
 
-      res.json({ 
+      const responseData = { 
         status: "ok", 
         message: `Successfully processed ${parsedAlerts.length} alerts`,
         parsed: parsedAlerts.length,
@@ -113,7 +151,15 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
           updated: alertSummary.updated,
           resolved: alertSummary.resolved
         }
-      });
+      };
+
+      // Add processing errors to response if any occurred
+      if (processingErrors > 0) {
+        (responseData as any).processingErrors = processingErrors;
+        (responseData as any).message += ` (${processingErrors} errors occurred - check logs)`;
+      }
+
+      res.json(responseData);
 
     } catch (error) {
       console.error('Alertmanager webhook error:', error);

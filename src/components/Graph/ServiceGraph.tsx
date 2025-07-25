@@ -73,7 +73,18 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
           
           // Add tags if present
           if (n.tags && n.tags.length > 0) {
-            tooltip += `\nTags: ${n.tags.join(', ')}`;
+            tooltip += `\n\nTags:`;
+            n.tags.forEach(tag => {
+              const source = n.tagSources?.[tag];
+              if (source) {
+                const sourceIcon = source === 'user' ? '👤' : 
+                                  source === 'alertmanager' ? '🚨' : 
+                                  source === 'otel' ? '📊' : '❓';
+                tooltip += `\n• ${tag} ${sourceIcon}`;
+              } else {
+                tooltip += `\n• ${tag}`;
+              }
+            });
           }
 
           // Add enrichment data to tooltip
