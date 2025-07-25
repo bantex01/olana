@@ -27,7 +27,7 @@ const app = createExpressApp();
 const cleanupConfig = getCleanupConfig();
 
 const serviceCleanup = new ServiceCleanup(pool, cleanupConfig);
-const alertmanagerConfig = getAlertmanagerConfig(); // Add this line
+const alertmanagerConfig = getAlertmanagerConfig();
 
 app.use(createHealthRoutes(pool));
 app.use(createAlertmanagerRoutes(pool, alertmanagerConfig));
@@ -66,3 +66,15 @@ app.listen(PORT, () => {
     dryRun: cleanupConfig.dryRun
   });
 });
+
+const alertConfig = getAlertmanagerConfig();
+console.log('Alertmanager tag config loaded:', {
+  allowedLabels: alertConfig.tagConfig.allowedLabels,
+  prefixPatterns: alertConfig.tagConfig.prefixPatterns,
+  maxTagsPerAlert: alertConfig.tagConfig.maxTagsPerAlert
+});
+
+// Temporary test - remove after verification
+import { upsertService } from './utils/serviceManager';
+
+console.log('Service manager utility loaded successfully');

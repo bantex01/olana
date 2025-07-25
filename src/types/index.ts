@@ -20,6 +20,7 @@ export type Node = {
   environment?: string;
   nodeType?: string;
   tags?: string[];
+  tagSources?: Record<string, string>;
   alertCount?: number;  // Added for backend-computed alert counts
   highestSeverity?: string;  // Added for backend-computed severity
   external_calls?: Array<{host: string; method?: string; path?: string; count: number}>;

@@ -1,5 +1,8 @@
 import { Pool, PoolClient } from 'pg';
 import { ParsedAlert } from './alertmanager';
+import { getAlertmanagerConfig, shouldLabelBecomeTag, labelNameToTagName } from '../config/alertmanager';
+import { ServiceUpdateData } from './serviceManager';
+import { upsertService } from './serviceManager';
 
 export interface AutoCreatedService {
   service_namespace: string;
@@ -8,66 +11,46 @@ export interface AutoCreatedService {
   team: string;
   component_type: string;
   tags: string[];
+  tag_sources?: Record<string, string>; // Make it optional for backward compatibility
   created_from_alert: boolean;
 }
 
 export async function ensureServiceExists(
   client: PoolClient,
-  alert: ParsedAlert
-): Promise<{ existed: boolean; created: boolean }> {
+  alert: ParsedAlert,
+  alertLabels: Record<string, string> = {}
+): Promise<{ existed: boolean; created: boolean; tagChanges: string[] }> {
   try {
-    // Check if service already exists
-    const existsResult = await client.query(`
-      SELECT service_namespace, service_name, created_at 
-      FROM services 
-      WHERE service_namespace = $1 AND service_name = $2
-    `, [alert.serviceNamespace, alert.serviceName]);
+    console.log('Ensuring service exists from alert', {
+      service: `${alert.serviceNamespace}::${alert.serviceName}`,
+      severity: alert.severity,
+      labelsCount: Object.keys(alertLabels).length
+    });
 
-    if (existsResult.rows.length > 0) {
-      // Service exists, just update last_seen
-      await client.query(`
-        UPDATE services 
-        SET last_seen = NOW()
-        WHERE service_namespace = $1 AND service_name = $2
-      `, [alert.serviceNamespace, alert.serviceName]);
-
-      console.log(`Service exists: ${alert.serviceNamespace}::${alert.serviceName}`);
-      return { existed: true, created: false };
-    }
-
-    // Service doesn't exist, create it
-    const newService = createServiceFromAlert(alert);
+    // Convert alert to ServiceUpdateData format
+    const serviceUpdate = alertToServiceUpdateData(alert, alertLabels);
     
-    await client.query(`
-      INSERT INTO services (
-        service_namespace, 
-        service_name, 
-        environment, 
-        team, 
-        component_type, 
-        tags, 
-        last_seen,
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-    `, [
-      newService.service_namespace,
-      newService.service_name,
-      newService.environment,
-      newService.team,
-      newService.component_type,
-      newService.tags
-    ]);
+    // Use unified upsert with tag merging
+    const upsertResult = await upsertService(client, serviceUpdate);
+    
+    console.log('Alert-based service upsert completed', {
+      service: `${alert.serviceNamespace}::${alert.serviceName}`,
+      created: upsertResult.created,
+      updated: upsertResult.updated,
+      tagChanges: upsertResult.tagChanges
+    });
 
-    console.log(`Auto-created service: ${alert.serviceNamespace}::${alert.serviceName}`);
-    return { existed: false, created: true };
+    return {
+      existed: !upsertResult.created,
+      created: upsertResult.created,
+      tagChanges: upsertResult.tagChanges
+    };
 
   } catch (error) {
     console.error('Error ensuring service exists:', error);
     throw error;
   }
 }
-
 function createServiceFromAlert(alert: ParsedAlert): AutoCreatedService {
   // Infer environment from namespace or default
   const environment = inferEnvironmentFromNamespace(alert.serviceNamespace);
@@ -79,7 +62,27 @@ function createServiceFromAlert(alert: ParsedAlert): AutoCreatedService {
     environment: environment,
     team: 'unknown', // Will be filled in when services are properly instrumented
     component_type: inferComponentTypeFromServiceName(alert.serviceName),
-    tags: generateTagsFromAlert(alert),
+    tags: generateTagsFromAlert(alert).tags,
+    created_from_alert: true
+  };
+}
+
+function createServiceFromAlertWithLabels(alert: ParsedAlert, alertLabels: Record<string, string>): AutoCreatedService & { tag_sources: Record<string, string> } {
+  // Infer environment from namespace or default
+  const environment = inferEnvironmentFromNamespace(alert.serviceNamespace);
+  
+  // Generate tags and tag sources using enhanced logic
+  const { tags, tagSources } = generateTagsFromAlert(alert, alertLabels);
+  
+  // Create basic service record with alert-derived metadata
+  return {
+    service_namespace: alert.serviceNamespace,
+    service_name: alert.serviceName,
+    environment: environment,
+    team: 'unknown', // Will be filled in when services are properly instrumented
+    component_type: inferComponentTypeFromServiceName(alert.serviceName),
+    tags: tags,
+    tag_sources: tagSources,
     created_from_alert: true
   };
 }
@@ -138,30 +141,88 @@ function inferComponentTypeFromServiceName(serviceName: string): string {
   return 'service';
 }
 
-function generateTagsFromAlert(alert: ParsedAlert): string[] {
+function generateTagsFromAlert(alert: ParsedAlert, alertLabels: Record<string, string> = {}): { tags: string[], tagSources: Record<string, string> } {
   const tags: string[] = [];
+  const tagSources: Record<string, string> = {};
+  const config = getAlertmanagerConfig();
   
-  // Add source tag
+  // Always add the alertmanager-created tag
   tags.push('alertmanager-created');
+  tagSources['alertmanager-created'] = 'alertmanager';
   
-  // Add severity-based tag
+  // Add severity-based tag for high priority alerts
   if (alert.severity === 'critical' || alert.severity === 'fatal') {
     tags.push('high-priority');
+    tagSources['high-priority'] = 'alertmanager';
   }
   
   // Only add environment tag if explicitly identifiable (not 'unknown')
   const environment = inferEnvironmentFromNamespace(alert.serviceNamespace);
   if (environment !== 'unknown') {
     tags.push(environment);
+    tagSources[environment] = 'alertmanager';
   }
   
-  // Add component type tag
+  // Add component type tag if not default 'service'
   const componentType = inferComponentTypeFromServiceName(alert.serviceName);
   if (componentType !== 'service') {
     tags.push(componentType);
+    tagSources[componentType] = 'alertmanager';
   }
-  
-  return tags;
+
+  // NEW: Extract tags from alert labels using allowlist
+  let extractedCount = 0;
+  for (const [labelName, labelValue] of Object.entries(alertLabels)) {
+    // Check if we've hit the max tags limit
+    if (extractedCount >= config.tagConfig.maxTagsPerAlert) {
+      console.warn('Reached max tags limit for alert', {
+        service: `${alert.serviceNamespace}::${alert.serviceName}`,
+        maxTags: config.tagConfig.maxTagsPerAlert,
+        skippedLabel: labelName
+      });
+      break;
+    }
+
+    // Skip empty values
+    if (!labelValue || labelValue.trim() === '') {
+      continue;
+    }
+
+    // Check if this label should become a tag
+    if (shouldLabelBecomeTag(labelName, config.tagConfig)) {
+      const tagName = labelNameToTagName(labelName, labelValue.trim(), config.tagConfig);
+      
+      // Avoid duplicates
+      if (!tags.includes(tagName)) {
+        tags.push(tagName);
+        tagSources[tagName] = 'alertmanager';
+        extractedCount++;
+        
+        console.debug('Extracted tag from alert label', {
+          service: `${alert.serviceNamespace}::${alert.serviceName}`,
+          labelName,
+          labelValue: labelValue.trim(),
+          tagName
+        });
+      }
+    } else {
+      console.debug('Skipped alert label (not in allowlist)', {
+        service: `${alert.serviceNamespace}::${alert.serviceName}`,
+        labelName,
+        allowedLabels: config.tagConfig.allowedLabels,
+        prefixPatterns: config.tagConfig.prefixPatterns
+      });
+    }
+  }
+
+  console.log('Generated tags from alert', {
+    service: `${alert.serviceNamespace}::${alert.serviceName}`,
+    totalTags: tags.length,
+    extractedFromLabels: extractedCount,
+    tags: tags
+  });
+
+  return { tags, tagSources };
 }
 
 export async function getServiceCreationStats(pool: Pool): Promise<{
@@ -195,4 +256,24 @@ export async function getServiceCreationStats(pool: Pool): Promise<{
   } finally {
     client.release();
   }
+}
+
+/**
+ * Convert parsed alert and labels to ServiceUpdateData format
+ */
+export function alertToServiceUpdateData(
+  alert: ParsedAlert, 
+  alertLabels: Record<string, string> = {}
+): ServiceUpdateData {
+  const { tags } = generateTagsFromAlert(alert, alertLabels);
+  
+  return {
+    service_namespace: alert.serviceNamespace,
+    service_name: alert.serviceName,
+    environment: inferEnvironmentFromNamespace(alert.serviceNamespace),
+    team: 'unknown', // Will be updated when proper instrumentation is added
+    component_type: inferComponentTypeFromServiceName(alert.serviceName),
+    tags: tags,
+    source: 'alertmanager'
+  };
 }

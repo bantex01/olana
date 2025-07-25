@@ -97,6 +97,7 @@ export function createGraphRoutes(pool: Pool): Router {
             s.tags,
             s.external_calls,
             s.database_calls,
+            s.tag_sources,
             s.rpc_calls
         FROM services s
         `;
@@ -264,21 +265,32 @@ export function createGraphRoutes(pool: Pool): Router {
             const serviceAlertCount = alertCount.get(serviceNodeId) || 0;
             const serviceHighestSeverity = highestSeverity.get(serviceNodeId) || "none";
             
+            // Parse tag sources if present
+            let tagSources = {};
+            try {
+                tagSources = typeof service.tag_sources === 'string' ? 
+                JSON.parse(service.tag_sources) : 
+                service.tag_sources || {};
+            } catch (e) {
+                console.warn('Failed to parse tag_sources for service', serviceNodeId);
+            }
+            
             nodes.push({
-            id: serviceNodeId,
-            label: service.service_name,
-            shape: "box",
-            color: "#D3D3D3",
-            team: service.team,
-            environment: service.environment,
-            component_type: service.component_type,
-            tags: service.tags || [],
-            nodeType: "service",
-            alertCount: serviceAlertCount,
-            highestSeverity: serviceHighestSeverity,
-            external_calls: typeof service.external_calls === 'string' ? JSON.parse(service.external_calls) : service.external_calls,
-            database_calls: typeof service.database_calls === 'string' ? JSON.parse(service.database_calls) : service.database_calls,
-            rpc_calls: typeof service.rpc_calls === 'string' ? JSON.parse(service.rpc_calls) : service.rpc_calls,
+                id: serviceNodeId,
+                label: service.service_name,
+                shape: "box",
+                color: "#D3D3D3",
+                team: service.team,
+                environment: service.environment,
+                component_type: service.component_type,
+                tags: service.tags || [],
+                tagSources: tagSources, // NEW: Include tag source information
+                nodeType: "service",
+                alertCount: serviceAlertCount,
+                highestSeverity: serviceHighestSeverity,
+                external_calls: typeof service.external_calls === 'string' ? JSON.parse(service.external_calls) : service.external_calls,
+                database_calls: typeof service.database_calls === 'string' ? JSON.parse(service.database_calls) : service.database_calls,
+                rpc_calls: typeof service.rpc_calls === 'string' ? JSON.parse(service.rpc_calls) : service.rpc_calls,
             });
             
             // Add edge from namespace to service
