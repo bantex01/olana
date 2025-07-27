@@ -1,98 +1,797 @@
--- Alert Hub Database Schema
--- Phase 1: Service-level topology with PostgreSQL storage
+--
+-- PostgreSQL database dump
+--
 
--- Enable UUID extension for future use
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Dumped from database version 16.9 (Postgres.app)
+-- Dumped by pg_dump version 16.9 (Postgres.app)
 
--- Core service registry (no instances table)
-CREATE TABLE services (
-  id SERIAL PRIMARY KEY,
-  service_namespace VARCHAR(255) NOT NULL,
-  service_name VARCHAR(255) NOT NULL,
-  environment VARCHAR(100),
-  team VARCHAR(100),
-  component_type VARCHAR(50),
-  created_at TIMESTAMP DEFAULT NOW(),
-  last_seen TIMESTAMP DEFAULT NOW(),
-  UNIQUE(service_namespace, service_name)
-);
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
 
--- Service dependencies (only between services)
-CREATE TABLE service_dependencies (
-  id SERIAL PRIMARY KEY,
-  from_service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
-  to_service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
-  created_at TIMESTAMP DEFAULT NOW(),
-  last_seen TIMESTAMP DEFAULT NOW(),
-  UNIQUE(from_service_id, to_service_id)
-);
+--
+-- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
+--
 
--- Alerts attributed to services (instance_id for context only)
-CREATE TABLE alerts (
-  id SERIAL PRIMARY KEY,
-  service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,
-  instance_id VARCHAR(255), -- Optional context, no FK constraint
-  severity VARCHAR(20) NOT NULL CHECK (severity IN ('fatal', 'critical', 'warning', 'none')),
-  message TEXT NOT NULL,
-  status VARCHAR(20) DEFAULT 'firing' CHECK (status IN ('firing', 'resolved')),
-  created_at TIMESTAMP DEFAULT NOW(),
-  resolved_at TIMESTAMP NULL,
-  alert_source VARCHAR(100) DEFAULT 'manual',
-  external_alert_id VARCHAR(255)
-);
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 
--- Performance indexes
-CREATE INDEX idx_services_lookup ON services(service_namespace, service_name);
-CREATE INDEX idx_services_last_seen ON services(last_seen);
-CREATE INDEX idx_alerts_active ON alerts(status, created_at) WHERE status = 'firing';
-CREATE INDEX idx_alerts_service ON alerts(service_id, status);
-CREATE INDEX idx_dependencies_from ON service_dependencies(from_service_id);
-CREATE INDEX idx_dependencies_to ON service_dependencies(to_service_id);
-CREATE INDEX idx_alerts_severity ON alerts(severity, status);
 
--- Function to automatically update last_seen timestamp
-CREATE OR REPLACE FUNCTION update_last_seen()
-RETURNS TRIGGER AS $$
+--
+-- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
+
+
+--
+-- Name: cleanup_old_alert_events(integer); Type: FUNCTION; Schema: public; Owner: adalton
+--
+
+CREATE FUNCTION public.cleanup_old_alert_events(days_old integer DEFAULT 90) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  -- Delete events older than specified days for resolved incidents
+  DELETE FROM alert_events 
+  WHERE event_time < NOW() - (days_old || ' days')::INTERVAL
+    AND incident_id IN (
+      SELECT id FROM alert_incidents 
+      WHERE status = 'resolved' 
+        AND incident_end < NOW() - (days_old || ' days')::INTERVAL
+    );
+  
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  
+  RETURN deleted_count;
+END;
+$$;
+
+
+ALTER FUNCTION public.cleanup_old_alert_events(days_old integer) OWNER TO adalton;
+
+--
+-- Name: update_alert_incidents_updated_at(); Type: FUNCTION; Schema: public; Owner: adalton
+--
+
+CREATE FUNCTION public.update_alert_incidents_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_alert_incidents_updated_at() OWNER TO adalton;
+
+--
+-- Name: update_alert_last_seen(); Type: FUNCTION; Schema: public; Owner: adalton
+--
+
+CREATE FUNCTION public.update_alert_last_seen() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
 BEGIN
   NEW.last_seen = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
--- Trigger to update last_seen on service updates
-CREATE TRIGGER update_services_last_seen
-  BEFORE UPDATE ON services
-  FOR EACH ROW
-  EXECUTE FUNCTION update_last_seen();
 
--- Trigger to update last_seen on dependency updates  
-CREATE TRIGGER update_dependencies_last_seen
-  BEFORE UPDATE ON service_dependencies
-  FOR EACH ROW
-  EXECUTE FUNCTION update_last_seen();
+ALTER FUNCTION public.update_alert_last_seen() OWNER TO adalton;
 
--- Sample queries for development/testing
--- Get all services with alert counts
--- SELECT 
---   s.service_namespace,
---   s.service_name,
---   s.environment,
---   s.team,
---   COUNT(a.id) FILTER (WHERE a.status = 'firing') as active_alerts,
---   MAX(CASE 
---     WHEN a.severity = 'fatal' THEN 1
---     WHEN a.severity = 'critical' THEN 2  
---     WHEN a.severity = 'warning' THEN 3
---     ELSE 4
---   END) as highest_severity_rank
--- FROM services s
--- LEFT JOIN alerts a ON s.id = a.service_id
--- GROUP BY s.id, s.service_namespace, s.service_name, s.environment, s.team;
+--
+-- Name: update_last_seen(); Type: FUNCTION; Schema: public; Owner: adalton
+--
 
--- Get service dependency graph
--- SELECT 
---   fs.service_namespace || '::' || fs.service_name as from_service,
---   ts.service_namespace || '::' || ts.service_name as to_service
--- FROM service_dependencies sd
--- JOIN services fs ON sd.from_service_id = fs.id
--- JOIN services ts ON sd.to_service_id = ts.id;
+CREATE FUNCTION public.update_last_seen() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  NEW.last_seen = NOW();
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_last_seen() OWNER TO adalton;
+
+--
+-- Name: update_namespace_dependency_updated_at(); Type: FUNCTION; Schema: public; Owner: adalton
+--
+
+CREATE FUNCTION public.update_namespace_dependency_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_namespace_dependency_updated_at() OWNER TO adalton;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: active_count; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.active_count (
+    count bigint
+);
+
+
+ALTER TABLE public.active_count OWNER TO adalton;
+
+--
+-- Name: alert_events; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.alert_events (
+    id integer NOT NULL,
+    incident_id integer NOT NULL,
+    event_type character varying(20) NOT NULL,
+    event_time timestamp without time zone NOT NULL,
+    event_data jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT alert_events_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['fired'::character varying, 'resolved'::character varying, 'updated'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.alert_events OWNER TO adalton;
+
+--
+-- Name: TABLE alert_events; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON TABLE public.alert_events IS 'Individual fire/resolve/update events for each incident - enables timeline reconstruction';
+
+
+--
+-- Name: COLUMN alert_events.event_type; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_events.event_type IS 'Type of event: fired (alert started), resolved (alert ended), updated (alert modified)';
+
+
+--
+-- Name: COLUMN alert_events.event_time; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_events.event_time IS 'Exact timestamp when this event occurred';
+
+
+--
+-- Name: COLUMN alert_events.event_data; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_events.event_data IS 'Additional event context: webhook payload, counts, external IDs, etc.';
+
+
+--
+-- Name: alert_incidents; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.alert_incidents (
+    id integer NOT NULL,
+    service_namespace character varying(255) NOT NULL,
+    service_name character varying(255) NOT NULL,
+    instance_id character varying(255) DEFAULT ''::character varying,
+    severity character varying(20) NOT NULL,
+    message text NOT NULL,
+    alert_fingerprint character varying(64) NOT NULL,
+    incident_start timestamp without time zone NOT NULL,
+    incident_end timestamp without time zone,
+    status character varying(20) DEFAULT 'firing'::character varying,
+    alert_source character varying(100) DEFAULT 'manual'::character varying,
+    external_alert_id character varying(255),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT alert_incidents_severity_check CHECK (((severity)::text = ANY ((ARRAY['fatal'::character varying, 'critical'::character varying, 'warning'::character varying, 'none'::character varying])::text[]))),
+    CONSTRAINT alert_incidents_status_check CHECK (((status)::text = ANY ((ARRAY['firing'::character varying, 'resolved'::character varying])::text[]))),
+    CONSTRAINT check_incident_end_after_start CHECK (((incident_end IS NULL) OR (incident_end >= incident_start)))
+);
+
+
+ALTER TABLE public.alert_incidents OWNER TO adalton;
+
+--
+-- Name: TABLE alert_incidents; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON TABLE public.alert_incidents IS 'Logical grouping of related alert events with complete lifecycle tracking';
+
+
+--
+-- Name: COLUMN alert_incidents.alert_fingerprint; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_incidents.alert_fingerprint IS 'SHA256 hash of service+instance+severity+message for grouping identical alerts';
+
+
+--
+-- Name: COLUMN alert_incidents.incident_start; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_incidents.incident_start IS 'When this specific incident began (first fire event)';
+
+
+--
+-- Name: COLUMN alert_incidents.incident_end; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_incidents.incident_end IS 'When this specific incident was resolved (NULL if still firing)';
+
+
+--
+-- Name: COLUMN alert_incidents.status; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_incidents.status IS 'Current status: firing (active) or resolved (closed)';
+
+
+--
+-- Name: active_incidents; Type: VIEW; Schema: public; Owner: adalton
+--
+
+CREATE VIEW public.active_incidents AS
+ SELECT id,
+    service_namespace,
+    service_name,
+    instance_id,
+    severity,
+    message,
+    incident_start,
+    alert_source,
+    (EXTRACT(epoch FROM (now() - (incident_start)::timestamp with time zone)) / (3600)::numeric) AS hours_active,
+    ( SELECT count(*) AS count
+           FROM public.alert_events e
+          WHERE (e.incident_id = i.id)) AS event_count,
+    ( SELECT max(e.event_time) AS max
+           FROM public.alert_events e
+          WHERE (e.incident_id = i.id)) AS last_event_time
+   FROM public.alert_incidents i
+  WHERE ((status)::text = 'firing'::text)
+  ORDER BY incident_start DESC;
+
+
+ALTER VIEW public.active_incidents OWNER TO adalton;
+
+--
+-- Name: alert_analytics_hourly; Type: MATERIALIZED VIEW; Schema: public; Owner: adalton
+--
+
+CREATE MATERIALIZED VIEW public.alert_analytics_hourly AS
+ SELECT date_trunc('hour'::text, incident_start) AS hour,
+    service_namespace,
+    service_name,
+    severity,
+    count(*) AS incident_count,
+    count(*) FILTER (WHERE ((status)::text = 'resolved'::text)) AS resolved_count,
+    avg((EXTRACT(epoch FROM (incident_end - incident_start)) / (60)::numeric)) FILTER (WHERE (incident_end IS NOT NULL)) AS avg_duration_minutes
+   FROM public.alert_incidents
+  WHERE (incident_start >= (now() - '30 days'::interval))
+  GROUP BY (date_trunc('hour'::text, incident_start)), service_namespace, service_name, severity
+  ORDER BY (date_trunc('hour'::text, incident_start)) DESC
+  WITH NO DATA;
+
+
+ALTER MATERIALIZED VIEW public.alert_analytics_hourly OWNER TO adalton;
+
+--
+-- Name: alert_events_id_seq; Type: SEQUENCE; Schema: public; Owner: adalton
+--
+
+CREATE SEQUENCE public.alert_events_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.alert_events_id_seq OWNER TO adalton;
+
+--
+-- Name: alert_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: adalton
+--
+
+ALTER SEQUENCE public.alert_events_id_seq OWNED BY public.alert_events.id;
+
+
+--
+-- Name: alert_incidents_id_seq; Type: SEQUENCE; Schema: public; Owner: adalton
+--
+
+CREATE SEQUENCE public.alert_incidents_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.alert_incidents_id_seq OWNER TO adalton;
+
+--
+-- Name: alert_incidents_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: adalton
+--
+
+ALTER SEQUENCE public.alert_incidents_id_seq OWNED BY public.alert_incidents.id;
+
+
+--
+-- Name: alerts_legacy_view; Type: VIEW; Schema: public; Owner: adalton
+--
+
+CREATE VIEW public.alerts_legacy_view AS
+ SELECT id,
+    service_namespace,
+    service_name,
+    instance_id,
+    severity,
+    message,
+    status,
+    ( SELECT count(*) AS count
+           FROM public.alert_events e
+          WHERE ((e.incident_id = i.id) AND ((e.event_type)::text = 'fired'::text))) AS count,
+    incident_start AS first_seen,
+    COALESCE(incident_end, updated_at) AS last_seen,
+    created_at,
+    incident_end AS resolved_at,
+    alert_source,
+    external_alert_id
+   FROM public.alert_incidents i
+  ORDER BY incident_start DESC;
+
+
+ALTER VIEW public.alerts_legacy_view OWNER TO adalton;
+
+--
+-- Name: VIEW alerts_legacy_view; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON VIEW public.alerts_legacy_view IS 'Backward compatibility view that presents incidents in old alerts table format';
+
+
+--
+-- Name: event_count; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.event_count (
+    count bigint
+);
+
+
+ALTER TABLE public.event_count OWNER TO adalton;
+
+--
+-- Name: namespace_dependencies; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.namespace_dependencies (
+    id integer NOT NULL,
+    from_namespace character varying(255) NOT NULL,
+    to_namespace character varying(255) NOT NULL,
+    created_by character varying(255),
+    dependency_type character varying(50) DEFAULT 'manual'::character varying,
+    description text,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.namespace_dependencies OWNER TO adalton;
+
+--
+-- Name: namespace_dependencies_id_seq; Type: SEQUENCE; Schema: public; Owner: adalton
+--
+
+CREATE SEQUENCE public.namespace_dependencies_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.namespace_dependencies_id_seq OWNER TO adalton;
+
+--
+-- Name: namespace_dependencies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: adalton
+--
+
+ALTER SEQUENCE public.namespace_dependencies_id_seq OWNED BY public.namespace_dependencies.id;
+
+
+--
+-- Name: service_dependencies; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.service_dependencies (
+    from_service_namespace character varying(255) NOT NULL,
+    from_service_name character varying(255) NOT NULL,
+    to_service_namespace character varying(255) NOT NULL,
+    to_service_name character varying(255) NOT NULL,
+    created_at timestamp without time zone DEFAULT now(),
+    last_seen timestamp without time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.service_dependencies OWNER TO adalton;
+
+--
+-- Name: services; Type: TABLE; Schema: public; Owner: adalton
+--
+
+CREATE TABLE public.services (
+    service_namespace character varying(255) NOT NULL,
+    service_name character varying(255) NOT NULL,
+    environment character varying(100),
+    team character varying(100),
+    component_type character varying(50),
+    created_at timestamp without time zone DEFAULT now(),
+    last_seen timestamp without time zone DEFAULT now(),
+    tags text[] DEFAULT '{}'::text[],
+    external_calls jsonb DEFAULT '[]'::jsonb,
+    database_calls jsonb DEFAULT '[]'::jsonb,
+    rpc_calls jsonb DEFAULT '[]'::jsonb,
+    tag_sources jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+ALTER TABLE public.services OWNER TO adalton;
+
+--
+-- Name: COLUMN services.tag_sources; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.services.tag_sources IS 'JSONB object tracking source of each tag. Format: {"tag_name": "source_type"}. Sources: "otel", "alertmanager", "user"';
+
+
+--
+-- Name: alert_events id; Type: DEFAULT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.alert_events ALTER COLUMN id SET DEFAULT nextval('public.alert_events_id_seq'::regclass);
+
+
+--
+-- Name: alert_incidents id; Type: DEFAULT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.alert_incidents ALTER COLUMN id SET DEFAULT nextval('public.alert_incidents_id_seq'::regclass);
+
+
+--
+-- Name: namespace_dependencies id; Type: DEFAULT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.namespace_dependencies ALTER COLUMN id SET DEFAULT nextval('public.namespace_dependencies_id_seq'::regclass);
+
+
+--
+-- Name: alert_events alert_events_pkey; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.alert_events
+    ADD CONSTRAINT alert_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: alert_incidents alert_incidents_alert_fingerprint_incident_start_key; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.alert_incidents
+    ADD CONSTRAINT alert_incidents_alert_fingerprint_incident_start_key UNIQUE (alert_fingerprint, incident_start);
+
+
+--
+-- Name: alert_incidents alert_incidents_pkey; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.alert_incidents
+    ADD CONSTRAINT alert_incidents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: namespace_dependencies namespace_dependencies_from_namespace_to_namespace_key; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.namespace_dependencies
+    ADD CONSTRAINT namespace_dependencies_from_namespace_to_namespace_key UNIQUE (from_namespace, to_namespace);
+
+
+--
+-- Name: namespace_dependencies namespace_dependencies_pkey; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.namespace_dependencies
+    ADD CONSTRAINT namespace_dependencies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: service_dependencies service_dependencies_pkey; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.service_dependencies
+    ADD CONSTRAINT service_dependencies_pkey PRIMARY KEY (from_service_namespace, from_service_name, to_service_namespace, to_service_name);
+
+
+--
+-- Name: services services_pkey; Type: CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_pkey PRIMARY KEY (service_namespace, service_name);
+
+
+--
+-- Name: idx_alert_analytics_hourly_unique; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE UNIQUE INDEX idx_alert_analytics_hourly_unique ON public.alert_analytics_hourly USING btree (hour, service_namespace, service_name, severity);
+
+
+--
+-- Name: idx_alert_events_incident; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_events_incident ON public.alert_events USING btree (incident_id, event_time);
+
+
+--
+-- Name: idx_alert_events_incident_time; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_events_incident_time ON public.alert_events USING btree (incident_id, event_time DESC);
+
+
+--
+-- Name: idx_alert_events_time_desc; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_events_time_desc ON public.alert_events USING btree (event_time DESC);
+
+
+--
+-- Name: idx_alert_events_type_time; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_events_type_time ON public.alert_events USING btree (event_type, event_time);
+
+
+--
+-- Name: idx_alert_incidents_active; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_active ON public.alert_incidents USING btree (service_namespace, service_name, severity, incident_start DESC) WHERE ((status)::text = 'firing'::text);
+
+
+--
+-- Name: idx_alert_incidents_fingerprint; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_fingerprint ON public.alert_incidents USING btree (alert_fingerprint);
+
+
+--
+-- Name: idx_alert_incidents_fingerprint_time; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_fingerprint_time ON public.alert_incidents USING btree (alert_fingerprint, incident_start DESC);
+
+
+--
+-- Name: idx_alert_incidents_service; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_service ON public.alert_incidents USING btree (service_namespace, service_name);
+
+
+--
+-- Name: idx_alert_incidents_service_severity; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_service_severity ON public.alert_incidents USING btree (service_namespace, service_name, severity);
+
+
+--
+-- Name: idx_alert_incidents_service_status; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_service_status ON public.alert_incidents USING btree (service_namespace, service_name, status);
+
+
+--
+-- Name: idx_alert_incidents_service_time; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_service_time ON public.alert_incidents USING btree (service_namespace, service_name, incident_start DESC);
+
+
+--
+-- Name: idx_alert_incidents_severity; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_severity ON public.alert_incidents USING btree (severity);
+
+
+--
+-- Name: idx_alert_incidents_source; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_source ON public.alert_incidents USING btree (alert_source);
+
+
+--
+-- Name: idx_alert_incidents_status; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_status ON public.alert_incidents USING btree (status);
+
+
+--
+-- Name: idx_alert_incidents_time_range; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_time_range ON public.alert_incidents USING btree (incident_start, incident_end);
+
+
+--
+-- Name: idx_namespace_deps_from; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_namespace_deps_from ON public.namespace_dependencies USING btree (from_namespace);
+
+
+--
+-- Name: idx_namespace_deps_to; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_namespace_deps_to ON public.namespace_dependencies USING btree (to_namespace);
+
+
+--
+-- Name: idx_namespace_deps_type; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_namespace_deps_type ON public.namespace_dependencies USING btree (dependency_type);
+
+
+--
+-- Name: idx_service_dependencies_from; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_service_dependencies_from ON public.service_dependencies USING btree (from_service_namespace, from_service_name);
+
+
+--
+-- Name: idx_service_dependencies_last_seen; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_service_dependencies_last_seen ON public.service_dependencies USING btree (last_seen);
+
+
+--
+-- Name: idx_service_dependencies_to; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_service_dependencies_to ON public.service_dependencies USING btree (to_service_namespace, to_service_name);
+
+
+--
+-- Name: idx_services_component_type; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_component_type ON public.services USING btree (component_type);
+
+
+--
+-- Name: idx_services_environment; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_environment ON public.services USING btree (environment);
+
+
+--
+-- Name: idx_services_last_seen; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_last_seen ON public.services USING btree (last_seen);
+
+
+--
+-- Name: idx_services_tag_sources; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_tag_sources ON public.services USING gin (tag_sources);
+
+
+--
+-- Name: idx_services_tags; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_tags ON public.services USING gin (tags);
+
+
+--
+-- Name: idx_services_team; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_team ON public.services USING btree (team);
+
+
+--
+-- Name: alert_incidents trigger_alert_incidents_updated_at; Type: TRIGGER; Schema: public; Owner: adalton
+--
+
+CREATE TRIGGER trigger_alert_incidents_updated_at BEFORE UPDATE ON public.alert_incidents FOR EACH ROW EXECUTE FUNCTION public.update_alert_incidents_updated_at();
+
+
+--
+-- Name: service_dependencies update_dependencies_last_seen; Type: TRIGGER; Schema: public; Owner: adalton
+--
+
+CREATE TRIGGER update_dependencies_last_seen BEFORE UPDATE ON public.service_dependencies FOR EACH ROW EXECUTE FUNCTION public.update_last_seen();
+
+
+--
+-- Name: namespace_dependencies update_namespace_dependencies_updated_at; Type: TRIGGER; Schema: public; Owner: adalton
+--
+
+CREATE TRIGGER update_namespace_dependencies_updated_at BEFORE UPDATE ON public.namespace_dependencies FOR EACH ROW EXECUTE FUNCTION public.update_namespace_dependency_updated_at();
+
+
+--
+-- Name: services update_services_last_seen; Type: TRIGGER; Schema: public; Owner: adalton
+--
+
+CREATE TRIGGER update_services_last_seen BEFORE UPDATE ON public.services FOR EACH ROW EXECUTE FUNCTION public.update_last_seen();
+
+
+--
+-- Name: alert_events alert_events_incident_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.alert_events
+    ADD CONSTRAINT alert_events_incident_id_fkey FOREIGN KEY (incident_id) REFERENCES public.alert_incidents(id) ON DELETE CASCADE;
+
+
+--
+-- Name: service_dependencies service_dependencies_from_service_namespace_from_service_n_fkey; Type: FK CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.service_dependencies
+    ADD CONSTRAINT service_dependencies_from_service_namespace_from_service_n_fkey FOREIGN KEY (from_service_namespace, from_service_name) REFERENCES public.services(service_namespace, service_name) ON DELETE CASCADE;
+
+
+--
+-- Name: service_dependencies service_dependencies_to_service_namespace_to_service_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: adalton
+--
+
+ALTER TABLE ONLY public.service_dependencies
+    ADD CONSTRAINT service_dependencies_to_service_namespace_to_service_name_fkey FOREIGN KEY (to_service_namespace, to_service_name) REFERENCES public.services(service_namespace, service_name) ON DELETE CASCADE;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
