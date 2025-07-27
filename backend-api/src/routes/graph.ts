@@ -169,36 +169,39 @@ export function createGraphRoutes(pool: Pool): Router {
         // Get alerts using natural keys
         let alertsResult = { rows: [] };
         if (servicesResult.rows.length > 0) {
-        // Build alert query with service filter
+        // Build alert query with service filter using incident tables
         const serviceConditions = servicesResult.rows.map((_, index) => 
-            `(a.service_namespace = $${index * 2 + 1} AND a.service_name = $${index * 2 + 2})`
+            `(i.service_namespace = $${index * 2 + 1} AND i.service_name = $${index * 2 + 2})`
         ).join(' OR ');
         
         let alertParams = servicesResult.rows.flatMap(s => [s.service_namespace, s.service_name]);
         let alertQuery = `
             SELECT 
-            a.service_namespace,
-            a.service_name,
-            a.severity,
+            i.service_namespace,
+            i.service_name,
+            i.severity,
             COUNT(*) as alert_count
-            FROM alerts a
-            WHERE a.status = 'firing' AND (${serviceConditions})
+            FROM alert_incidents i
+            WHERE i.status = 'firing' AND (${serviceConditions})
         `;
         
         // Add severity filter if present
         if (filters.severities && filters.severities.length > 0) {
             const severityStartIndex = alertParams.length + 1;
             if (filters.severities.length === 1) {
-            alertQuery += ` AND a.severity = $${severityStartIndex}`;
+            alertQuery += ` AND i.severity = $${severityStartIndex}`;
             alertParams.push(filters.severities[0]);
             } else {
             const placeholders = filters.severities.map((_item: string, index: number) => `$${severityStartIndex + index}`).join(', ');
-            alertQuery += ` AND a.severity IN (${placeholders})`;
+            alertQuery += ` AND i.severity IN (${placeholders})`;
             alertParams.push(...filters.severities);
             }
         }
         
-        alertQuery += ` GROUP BY a.service_namespace, a.service_name, a.severity`;
+        alertQuery += ` GROUP BY i.service_namespace, i.service_name, i.severity`;
+        
+        console.log('Alert query (incident-based):', alertQuery);
+        console.log('Alert params:', alertParams);
         
         alertsResult = await client.query(alertQuery, alertParams);
         }

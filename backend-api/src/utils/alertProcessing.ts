@@ -1,255 +1,217 @@
 import { PoolClient } from 'pg';
 import { ParsedAlert } from './alertmanager';
+import { processIncident, ProcessedAlert, IncidentProcessingResult } from './incidentProcessing';
 
 export interface AlertProcessingResult {
-  alertId: number;
-  isNewAlert: boolean;
-  count: number;
-  action: 'created' | 'updated' | 'resolved';
+  incidentId: number;
+  eventId: number;
+  action: 'created' | 'updated' | 'resolved' | 'reactivated';
+  isNewIncident: boolean;
+  incidentDuration?: number;
 }
 
+/**
+ * Process a single alert using the new incident-based system
+ */
 export async function processAlert(
   client: PoolClient,
   alert: ParsedAlert
 ): Promise<AlertProcessingResult> {
   try {
-    if (alert.status === 'resolved') {
-      return await resolveAlert(client, alert);
-    } else {
-      return await createOrUpdateAlert(client, alert);
-    }
+    // Convert ParsedAlert to ProcessedAlert format
+    const processedAlert: ProcessedAlert = {
+      serviceNamespace: alert.serviceNamespace,
+      serviceName: alert.serviceName,
+      instanceId: alert.instanceId,
+      severity: alert.severity,
+      message: alert.message,
+      status: alert.status,
+      alertSource: 'alertmanager',
+      externalAlertId: alert.externalAlertId,
+      eventTime: alert.status === 'resolved' && alert.endsAt ? alert.endsAt : alert.startsAt,
+      eventData: {
+        starts_at: alert.startsAt.toISOString(),
+        ends_at: alert.endsAt?.toISOString() || null,
+        external_alert_id: alert.externalAlertId
+      }
+    };
+
+    // Process using the incident system
+    const result = await processIncident(client, processedAlert);
+
+    // Map incident result to legacy alert result format
+    return mapIncidentResultToAlertResult(result);
+
   } catch (error) {
     console.error('Error processing alert:', error);
     throw error;
   }
 }
 
-async function createOrUpdateAlert(
+/**
+ * Process a manual alert (from POST /alerts endpoint)
+ */
+export async function processManualAlert(
   client: PoolClient,
-  alert: ParsedAlert
+  alertData: {
+    service_namespace: string;
+    service_name: string;
+    instance_id?: string;
+    severity: 'fatal' | 'critical' | 'warning' | 'none';
+    message: string;
+    alert_source?: string;
+    external_alert_id?: string;
+  }
 ): Promise<AlertProcessingResult> {
   try {
-    // Original insert/update logic
-    const result = await client.query(`
-      INSERT INTO alerts (
-        service_namespace, 
-        service_name, 
-        instance_id, 
-        severity, 
-        message, 
-        alert_source, 
-        external_alert_id, 
-        count, 
-        first_seen, 
-        last_seen,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $8, 'firing')
-      ON CONFLICT (service_namespace, service_name, instance_id, severity, message)
-      DO UPDATE SET 
-        count = alerts.count + 1,
-        last_seen = $8,
-        status = 'firing',
-        alert_source = CASE 
-          WHEN EXCLUDED.alert_source IS NOT NULL THEN EXCLUDED.alert_source 
-          ELSE alerts.alert_source 
-        END,
-        external_alert_id = CASE 
-          WHEN EXCLUDED.external_alert_id IS NOT NULL THEN EXCLUDED.external_alert_id 
-          ELSE alerts.external_alert_id 
-        END
-      RETURNING id, count, (count = 1) as is_new_alert
-    `, [
-      alert.serviceNamespace,
-      alert.serviceName,
-      alert.instanceId,
-      alert.severity,
-      alert.message,
-      'alertmanager',
-      alert.externalAlertId,
-      alert.startsAt
-    ]);
-
-    const row = result.rows[0];
-    
-    return {
-      alertId: row.id,
-      isNewAlert: row.is_new_alert,
-      count: row.count,
-      action: row.is_new_alert ? 'created' : 'updated'
+    const processedAlert: ProcessedAlert = {
+      serviceNamespace: alertData.service_namespace,
+      serviceName: alertData.service_name,
+      instanceId: alertData.instance_id || '',
+      severity: alertData.severity,
+      message: alertData.message,
+      status: 'firing', // Manual alerts are always firing when created
+      alertSource: alertData.alert_source || 'manual',
+      externalAlertId: alertData.external_alert_id,
+      eventTime: new Date(),
+      eventData: {
+        created_via: 'manual_api',
+        api_timestamp: new Date().toISOString()
+      }
     };
 
-  } catch (error: any) {
-    // Handle constraint violation specifically
-    if (error.code === '23505' && error.constraint === 'alerts_service_instance_severity_message_unique') {
-      console.warn('TEMPORARY FIX: Alert constraint violation detected', {
-        service: `${alert.serviceNamespace}::${alert.serviceName}`,
-        instance: alert.instanceId,
-        severity: alert.severity,
-        message: alert.message.substring(0, 100) + '...',
-        error: error.message
-      });
+    const result = await processIncident(client, processedAlert);
+    return mapIncidentResultToAlertResult(result);
 
-      // Try to find and update the existing alert regardless of status
-      const updateResult = await client.query(`
-        UPDATE alerts 
-        SET 
-          count = count + 1,
-          last_seen = $6,
-          status = 'firing',
-          resolved_at = NULL
-        WHERE service_namespace = $1 
-          AND service_name = $2 
-          AND instance_id = $3 
-          AND severity = $4 
-          AND message = $5
-        RETURNING id, count
-      `, [
-        alert.serviceNamespace,
-        alert.serviceName,
-        alert.instanceId,
-        alert.severity,
-        alert.message,
-        alert.startsAt
-      ]);
-
-      if (updateResult.rows.length > 0) {
-        const row = updateResult.rows[0];
-        console.log('TEMPORARY FIX: Successfully updated existing alert', {
-          alertId: row.id,
-          newCount: row.count,
-          service: `${alert.serviceNamespace}::${alert.serviceName}`
-        });
-
-        return {
-          alertId: row.id,
-          isNewAlert: false,
-          count: row.count,
-          action: 'updated'
-        };
-      } else {
-        // Fallback: log error but don't fail the webhook
-        console.error('TEMPORARY FIX: Could not find existing alert to update', {
-          service: `${alert.serviceNamespace}::${alert.serviceName}`,
-          instance: alert.instanceId,
-          severity: alert.severity
-        });
-
-        // Return a dummy result to prevent webhook failure
-        return {
-          alertId: -1,
-          isNewAlert: false,
-          count: 1,
-          action: 'created'
-        };
-      }
-    }
-
-    // Re-throw other errors
+  } catch (error) {
+    console.error('Error processing manual alert:', error);
     throw error;
   }
 }
 
-async function resolveAlert(
+/**
+ * Resolve a manual alert (from PATCH /alerts/:id/resolve endpoint)
+ */
+export async function resolveManualAlert(
   client: PoolClient,
-  alert: ParsedAlert
+  incidentId: number
 ): Promise<AlertProcessingResult> {
-  // Try to resolve matching alert by finding it first, then updating
-  const findResult = await client.query(`
-    SELECT id, count
-    FROM alerts 
-    WHERE service_namespace = $1 
-      AND service_name = $2 
-      AND instance_id = $3 
-      AND severity = $4 
-      AND message = $5
-      AND status = 'firing'
-    ORDER BY last_seen DESC
-    LIMIT 1
-  `, [
-    alert.serviceNamespace,
-    alert.serviceName,
-    alert.instanceId,
-    alert.severity,
-    alert.message
-  ]);
-
-  if (findResult.rows.length === 0) {
-    // No matching firing alert found, log and create a resolved alert record
-    console.warn(`No matching firing alert found to resolve for ${alert.serviceNamespace}::${alert.serviceName} - ${alert.message}`);
-    
-    // Create a resolved alert record for tracking purposes
-    const createResult = await client.query(`
-      INSERT INTO alerts (
-        service_namespace, 
-        service_name, 
-        instance_id, 
-        severity, 
-        message, 
-        alert_source, 
-        external_alert_id, 
-        count, 
-        first_seen, 
-        last_seen,
+  try {
+    // Get the incident details
+    const incidentResult = await client.query(`
+      SELECT 
+        service_namespace,
+        service_name,
+        instance_id,
+        severity,
+        message,
         status,
-        resolved_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $8, 'resolved', $9)
-      RETURNING id, count
-    `, [
-      alert.serviceNamespace,
-      alert.serviceName,
-      alert.instanceId,
-      alert.severity,
-      alert.message,
-      'alertmanager',
-      alert.externalAlertId,
-      alert.startsAt,
-      alert.endsAt || new Date()
-    ]);
+        alert_source,
+        external_alert_id,
+        incident_start
+      FROM alert_incidents 
+      WHERE id = $1
+    `, [incidentId]);
 
-    return {
-      alertId: createResult.rows[0].id,
-      isNewAlert: true,
-      count: 1,
-      action: 'resolved'
+    if (incidentResult.rows.length === 0) {
+      throw new Error(`Incident ${incidentId} not found`);
+    }
+
+    const incident = incidentResult.rows[0];
+
+    if (incident.status === 'resolved') {
+      throw new Error(`Incident ${incidentId} is already resolved`);
+    }
+
+    // Create resolve alert
+    const processedAlert: ProcessedAlert = {
+      serviceNamespace: incident.service_namespace,
+      serviceName: incident.service_name,
+      instanceId: incident.instance_id,
+      severity: incident.severity,
+      message: incident.message,
+      status: 'resolved',
+      alertSource: incident.alert_source,
+      externalAlertId: incident.external_alert_id,
+      eventTime: new Date(),
+      eventData: {
+        resolved_via: 'manual_api',
+        api_timestamp: new Date().toISOString(),
+        original_incident_start: incident.incident_start
+      }
     };
+
+    const result = await processIncident(client, processedAlert);
+    return mapIncidentResultToAlertResult(result);
+
+  } catch (error) {
+    console.error('Error resolving manual alert:', error);
+    throw error;
+  }
+}
+
+/**
+ * Map incident processing result to legacy alert result format
+ */
+function mapIncidentResultToAlertResult(
+  incidentResult: IncidentProcessingResult
+): AlertProcessingResult {
+  // Map incident actions to legacy alert actions
+  let action: AlertProcessingResult['action'];
+  
+  switch (incidentResult.action) {
+    case 'incident_created':
+      action = 'created';
+      break;
+    case 'incident_updated':
+      action = 'updated';
+      break;
+    case 'incident_resolved':
+      action = 'resolved';
+      break;
+    case 'incident_reactivated':
+      action = 'reactivated';
+      break;
+    default:
+      action = 'updated';
   }
 
-  // Update the found alert to resolved status
-  const alertId = findResult.rows[0].id;
-  const count = findResult.rows[0].count;
-  
-  await client.query(`
-    UPDATE alerts 
-    SET status = 'resolved', 
-        resolved_at = $1,
-        last_seen = $1
-    WHERE id = $2
-  `, [alert.endsAt || new Date(), alertId]);
-
   return {
-    alertId: alertId,
-    isNewAlert: false,
-    count: count,
-    action: 'resolved'
+    incidentId: incidentResult.incidentId,
+    eventId: incidentResult.eventId,
+    action,
+    isNewIncident: incidentResult.isNewIncident,
+    incidentDuration: incidentResult.incidentDuration
   };
 }
 
+/**
+ * Summarize multiple alert processing results
+ */
 export function summarizeAlertProcessing(results: AlertProcessingResult[]): {
   created: number;
   updated: number;
   resolved: number;
+  reactivated: number;
   totalProcessed: number;
+  totalIncidents: number;
+  totalEvents: number;
 } {
   const summary = {
     created: 0,
     updated: 0,
     resolved: 0,
-    totalProcessed: results.length
+    reactivated: 0,
+    totalProcessed: results.length,
+    totalIncidents: 0,
+    totalEvents: results.length
   };
 
+  const uniqueIncidents = new Set<number>();
+
   results.forEach(result => {
+    uniqueIncidents.add(result.incidentId);
+    
     switch (result.action) {
       case 'created':
         summary.created++;
@@ -260,8 +222,13 @@ export function summarizeAlertProcessing(results: AlertProcessingResult[]): {
       case 'resolved':
         summary.resolved++;
         break;
+      case 'reactivated':
+        summary.reactivated++;
+        break;
     }
   });
+
+  summary.totalIncidents = uniqueIncidents.size;
 
   return summary;
 }
