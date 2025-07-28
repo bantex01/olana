@@ -1,84 +1,196 @@
-import React, { useEffect, useRef, useState } from "react";
-import type { Alert, Node, Edge, GraphFilters } from "./types";
-import { API_BASE_URL } from "./utils/api";
-import { useFilters } from './hooks/useFilters';
-import { useTags } from './hooks/useTags';
-import { useAlerts } from './hooks/useAlerts';
-import { useGraphData } from './hooks/useGraphData';
-import { GraphLegend } from './components/Graph/GraphLegend';
-import { AlertsList } from './components/Alerts/AlertsList';
-import { FilterPanel } from './components/Filters/FilterPanel';
-import { NamespaceDependencies } from './components/NamespaceDeps/NamespaceDependencies';
-import { ServiceGraph } from './components/Graph/ServiceGraph';
+import React, { useState } from 'react';
+import { Layout, Menu, theme, Typography, Breadcrumb } from 'antd';
+import {
+  HomeOutlined,
+  NodeIndexOutlined,
+  AlertOutlined,
+  BarChartOutlined,
+  SettingOutlined,
+  DatabaseOutlined
+} from '@ant-design/icons';
+import 'antd/dist/reset.css';
+import { DashboardHome } from './components/Dashboard/DashboardHome';
+import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 
-const App = () => {
+const { Header, Content, Sider } = Layout;
+const { Title } = Typography;
 
-  const filterState = useFilters();
-  const { availableTags } = useTags();
-  const { alerts, groupedAlerts, fetchAlerts } = useAlerts();
-  const { availableNamespaces, namespaceDeps, fetchGraphData, fetchNamespaces, fetchNamespaceDeps, buildFilterQuery } = useGraphData();
+// Menu items configuration
+const menuItems = [
+  {
+    key: 'home',
+    icon: <HomeOutlined />,
+    label: 'Dashboard',
+  },
+  {
+    key: 'services',
+    icon: <NodeIndexOutlined />,
+    label: 'Service Map',
+  },
+  {
+    key: 'incidents',
+    icon: <AlertOutlined />,
+    label: 'Incidents',
+  },
+  {
+    key: 'analytics',
+    icon: <BarChartOutlined />,
+    label: 'Analytics',
+  },
+  {
+    key: 'admin',
+    icon: <SettingOutlined />,
+    label: 'Administration',
+  },
+];
 
-  const [showFilters, setShowFilters] = useState(false);
+const App: React.FC = () => {
+  const [collapsed, setCollapsed] = useState(false);
+  const [selectedKey, setSelectedKey] = useState('home');
+  const [dashboardLastUpdated, setDashboardLastUpdated] = useState<Date | null>(null);
+  
+  const {
+    token: { colorBgContainer, borderRadiusLG },
+  } = theme.useToken();
 
-  useEffect(() => {
-    fetchNamespaces();
-    fetchNamespaceDeps();
-  }, []);
+  // Get page title based on selected menu
+  const getPageTitle = (key: string) => {
+    const item = menuItems.find(item => item.key === key);
+    return item?.label || 'Dashboard';
+  };
+
+  // Get breadcrumb items
+  const getBreadcrumbs = (key: string) => {
+    return [
+      { title: 'Alert Hub' },
+      { title: getPageTitle(key) }
+    ];
+  };
+
+  // Render content based on selected menu
+  const renderContent = () => {
+    switch (selectedKey) {
+      case 'home':
+        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+      case 'services':
+        return <ServiceGraphPage />;
+      case 'incidents':
+        return <div>Incidents page (coming soon)</div>;
+      case 'analytics':
+        return <div>Analytics page (coming soon)</div>;
+      case 'admin':
+        return <div>Admin page (coming soon)</div>;
+      default:
+        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+    }
+  };
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h2>Service Dependency Graph</h2>
-        <button 
-          onClick={() => setShowFilters(!showFilters)}
-          style={{ 
-            padding: "0.5rem 1rem", 
-            backgroundColor: showFilters ? "#007bff" : "#6c757d",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer"
-          }}
+    <Layout style={{ minHeight: '100vh' }}>
+      {/* Left Sidebar */}
+      <Sider 
+        collapsible 
+        collapsed={collapsed} 
+        onCollapse={setCollapsed}
+        theme="dark"
+        width={240}
+      >
+        {/* Logo/Brand Area */}
+        <div style={{
+          height: 64,
+          margin: 16,
+          background: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontWeight: 'bold',
+          fontSize: collapsed ? '14px' : '16px'
+        }}>
+          {collapsed ? (
+            <img 
+              src="/olana.png"
+              alt="Logo" 
+              style={{ 
+                height: 32, 
+                width: 32, 
+                objectFit: 'contain' 
+              }} 
+            />
+          ) : (
+            <img 
+              src="/olana.png" 
+              alt="Alert Hub" 
+              style={{ 
+                height: 40, 
+                maxWidth: '180px', 
+                objectFit: 'contain' 
+              }} 
+            />
+          )}
+        </div>
+
+        {/* Navigation Menu */}
+        <Menu
+          theme="dark"
+          selectedKeys={[selectedKey]}
+          mode="inline"
+          items={menuItems}
+          onSelect={({ key }) => setSelectedKey(key)}
+        />
+      </Sider>
+
+      {/* Main Layout */}
+      <Layout>
+        {/* Header */}
+        <Header 
+        style={{ 
+            padding: '0 24px', 
+            background: colorBgContainer,
+            borderBottom: '1px solid #f0f0f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+        }}
         >
-          {showFilters ? "Hide Filters" : "Show Filters"}
-        </button>
-      </div>
+        <div style={{ paddingTop: 8, paddingBottom: 8 }}>
+        <Title level={3} style={{ margin: 0, lineHeight: 1.2 }}>
+            {getPageTitle(selectedKey)}
+        </Title>
+        </div>
+            <div style={{ color: '#666', alignSelf: 'flex-start', paddingTop: 8 }}>
+            {new Date().toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            })}
+            </div>
+        </Header>
 
-   {/* Filter Panel */}
-      <FilterPanel
-        showFilters={showFilters}
-        availableNamespaces={availableNamespaces}
-        availableTags={availableTags}
-        selectedTags={filterState.selectedTags}
-        setSelectedTags={filterState.setSelectedTags}
-        selectedNamespaces={filterState.selectedNamespaces}
-        setSelectedNamespaces={filterState.setSelectedNamespaces}
-        selectedSeverities={filterState.selectedSeverities}
-        setSelectedSeverities={filterState.setSelectedSeverities}
-        includeDependentNamespaces={filterState.includeDependentNamespaces}
-        setIncludeDependentNamespaces={filterState.setIncludeDependentNamespaces}
-        clearAllFilters={filterState.clearAllFilters}
-      />
+        {/* Content Area */}
+        <Content style={{ margin: '0 16px' }}>
+          {/* Breadcrumb */}
+          <Breadcrumb 
+            style={{ margin: '16px 0' }}
+            items={getBreadcrumbs(selectedKey)}
+          />
 
-        {/* Legend */}
-        <GraphLegend />
-
-      {/* Graph */}
-      <ServiceGraph
-        alerts={alerts}
-        currentFilters={filterState.filters}
-        fetchGraphData={fetchGraphData}
-        fetchAlerts={fetchAlerts}
-        buildFilterQuery={buildFilterQuery}
-        includeDependentNamespaces={filterState.includeDependentNamespaces}
-      />
-
-      {/* Namespace Dependencies Management */}
-      <NamespaceDependencies namespaceDeps={namespaceDeps} />
-
-      {/* Alerts by Service */}
-      <AlertsList groupedAlerts={groupedAlerts} />
-    </div>
+          {/* Main Content */}
+          <div
+            style={{
+              padding: 24,
+              minHeight: 360,
+              background: colorBgContainer,
+              borderRadius: borderRadiusLG,
+            }}
+          >
+            {renderContent()}
+          </div>
+        </Content>
+      </Layout>
+    </Layout>
   );
 };
 
