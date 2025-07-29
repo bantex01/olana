@@ -11,6 +11,8 @@ import {
 import 'antd/dist/reset.css';
 import { DashboardHome } from './components/Dashboard/DashboardHome';
 import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
+import { IncidentsPage } from './components/Incidents/IncidentsPage';
+
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
@@ -75,7 +77,7 @@ const App: React.FC = () => {
       case 'services':
         return <ServiceGraphPage />;
       case 'incidents':
-        return <div>Incidents page (coming soon)</div>;
+        return <IncidentsPage />;
       case 'analytics':
         return <div>Analytics page (coming soon)</div>;
       case 'admin':

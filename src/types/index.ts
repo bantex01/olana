@@ -1,12 +1,18 @@
 export type Alert = {
+  alert_id: number;
   service_namespace: string;
   service_name: string;
-  instance_id?: string;
-  severity: string;
+  instance_id: string;
+  severity: 'fatal' | 'critical' | 'warning' | 'none';
   message: string;
-  count?: number;
-  first_seen?: string;
-  last_seen?: string;
+  status: 'firing' | 'resolved';
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  created_at: string;
+  resolved_at: string | null;
+  alert_source: string;
+  external_alert_id: string;
 };
 
 export type Node = {
@@ -44,4 +50,15 @@ export type GraphFilters = {
   teams?: string[];
   severities?: string[];
   environments?: string[];
+};
+
+export type ServiceGroup = {
+  serviceKey: string;
+  serviceNamespace: string;
+  serviceName: string;
+  alerts: Alert[];
+  alertCount: number;
+  highestSeverity: string;
+  latestActivity: string;
+  longestDuration: number;
 };
