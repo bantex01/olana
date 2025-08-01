@@ -103,8 +103,8 @@ export const AlertRow: React.FC<AlertRowProps> = ({ alert }) => {
               </Tag>
             )}
 
-            <Tag color={alert.status === 'firing' ? 'red' : 'green'}>
-              {alert.status.toUpperCase()}
+            <Tag color="red">
+              FIRING
             </Tag>
           </Space>
         </div>

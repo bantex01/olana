@@ -192,7 +192,7 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
           enabled: false
         }*/
 
-                  /*layout: {
+                  layout: {
             clusterThreshold: 150,
             improvedLayout: true
           },
@@ -205,9 +205,9 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
               nodeDistance: 100,
               damping: 0.09
             }
-          }*/  
+          }
 
-          layout: {
+          /*layout: {
             improvedLayout: true,
             randomSeed: 42, // For consistent layouts
           },
@@ -223,7 +223,7 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
               avoidOverlap: 1
             },
             stabilization: {iterations: 150}
-          }
+          }*/
         };
 
         console.log('Creating new Network...');
