@@ -13,6 +13,14 @@ import { DashboardHome } from './components/Dashboard/DashboardHome';
 import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
 
+const siderResponsiveStyle = `
+  @media (max-width: 768px) {
+    .ant-layout-sider-collapsed {
+      margin-left: -240px !important;
+    }
+  }
+`;
+
 
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
@@ -96,6 +104,15 @@ const App: React.FC = () => {
         onCollapse={setCollapsed}
         theme="dark"
         width={240}
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          height: '100vh',
+          zIndex: 100,
+          transition: 'all 0.2s ease',
+          overflow: 'auto',
+        }}
       >
         {/* Logo/Brand Area */}
         <div style={{
@@ -108,7 +125,10 @@ const App: React.FC = () => {
           justifyContent: 'center',
           color: 'white',
           fontWeight: 'bold',
-          fontSize: collapsed ? '14px' : '16px'
+          fontSize: collapsed ? '14px' : '16px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
         }}>
           {collapsed ? (
             <img 
@@ -144,7 +164,10 @@ const App: React.FC = () => {
       </Sider>
 
       {/* Main Layout */}
-      <Layout>
+      <Layout style={{ 
+        marginLeft: collapsed ? 80 : 240,
+        transition: 'margin-left 0.2s ease'
+      }}>
         {/* Header */}
         <Header 
         style={{ 

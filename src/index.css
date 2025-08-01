@@ -77,3 +77,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Responsive sidebar handling */
+@media (max-width: 768px) {
+  .ant-layout-sider.ant-layout-sider-collapsed {
+    margin-left: -240px !important;
+  }
+}

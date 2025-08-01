@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Typography, Table, Tag, Alert as AntAlert, Spin, Space, Button } from 'antd';
 import { AlertOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useIncidents } from '../../hooks/useIncidents';
@@ -12,23 +12,58 @@ import { CheckCircleOutlined, SearchOutlined } from '@ant-design/icons';
 const { Title } = Typography;
 
 export const IncidentsPage: React.FC = () => {
-const { 
-  alerts, 
-  serviceGroups, 
-  availableNamespaces,
-  loading, 
-  error, 
-  filters,
-  sortConfig,
-  lastUpdated,
-  fetchAlerts,
-  fetchNamespaces,
-  updateFilters, 
-  clearFilters,
-  toggleServiceExpansion,
-  isServiceExpanded,
-  updateSort
-} = useIncidents();
+  const { 
+    alerts, 
+    serviceGroups, 
+    availableNamespaces,
+    loading, 
+    error, 
+    filters,
+    sortConfig,
+    lastUpdated,
+    fetchAlerts,
+    fetchNamespaces,
+    updateFilters, 
+    clearFilters,
+    toggleServiceExpansion,
+    isServiceExpanded,
+    updateSort
+  } = useIncidents();
+  
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
+  const scrollPositionRef = useRef<number>(0);
+  const isAutoRefreshRef = useRef<boolean>(false);
+  const pageContainerRef = useRef<HTMLDivElement>(null);
+
+// Capture scroll position before auto-refresh
+const captureScrollPosition = () => {
+  const scrollElement = pageContainerRef.current || document.documentElement;
+  const scrollTop = pageContainerRef.current ? 
+    pageContainerRef.current.scrollTop : 
+    (window.pageYOffset || document.documentElement.scrollTop);
+  
+  scrollPositionRef.current = scrollTop;
+  console.log('🔍 Captured scroll position:', scrollTop);
+};
+
+// Restore scroll position after auto-refresh
+const restoreScrollPosition = () => {
+  if (isAutoRefreshRef.current) {
+    console.log('🔄 Attempting to restore scroll position:', scrollPositionRef.current);
+    
+    setTimeout(() => {
+      if (pageContainerRef.current) {
+        console.log('📦 Using container scroll');
+        pageContainerRef.current.scrollTop = scrollPositionRef.current;
+      } else {
+        console.log('🌐 Using window scroll');
+        window.scrollTo(0, scrollPositionRef.current);
+      }
+      isAutoRefreshRef.current = false;
+      console.log('✅ Scroll restoration complete');
+    }, 10);
+  }
+};
 
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -66,11 +101,31 @@ useEffect(() => {
 
 useEffect(() => {
   const interval = setInterval(() => {
+    // Mark this as auto-refresh and capture scroll position
+    isAutoRefreshRef.current = true;
+    captureScrollPosition();
+    setIsBackgroundRefreshing(true);
     fetchAlerts(filters, sortConfig);
   }, 30000);
 
   return () => clearInterval(interval);
 }, [filters, sortConfig]);
+
+useEffect(() => {
+  if (isAutoRefreshRef.current && !loading) {
+    restoreScrollPosition();
+    setTimeout(() => {
+      setIsBackgroundRefreshing(false);
+    }, 1000); // Show indicator for 1 second
+  }
+}, [loading, serviceGroups]);
+
+// Restore scroll position after data updates (for auto-refresh only)
+useEffect(() => {
+  if (isAutoRefreshRef.current && !loading) {
+    restoreScrollPosition();
+  }
+}, [loading, serviceGroups]);
 
  // Filter handlers
 const handleSeverityChange = (severities: string[]) => {
@@ -179,7 +234,7 @@ const handleClearAll = () => {
 
   if (error) {
     return (
-      <div>
+      <div ref={pageContainerRef}>  {/* Add ref here */}
         <Title level={2}>Alerts Management</Title>
         <div style={{ 
           padding: '40px',
@@ -289,7 +344,7 @@ const handleClearAll = () => {
             backgroundColor: '#f0f2f5', 
             borderRadius: '6px'
           }}>
-            <div style={{ 
+           <div style={{ 
               display: 'flex', 
               flexWrap: 'wrap',
               gap: '16px',
@@ -303,6 +358,11 @@ const handleClearAll = () => {
                 <span>
                   <strong>{alerts.length}</strong> total alerts
                 </span>
+                {isBackgroundRefreshing && (
+                  <span style={{ color: '#1890ff', fontSize: '12px' }}>
+                    🔄 Refreshing...
+                  </span>
+                )}
               </Space>
               
               <Space size="small" wrap>
@@ -325,7 +385,7 @@ const handleClearAll = () => {
           )}
 
           {/* Service rows */}
-               <div style={{ backgroundColor: 'white' }}>
+            <div style={{ backgroundColor: 'white' }}>
             {serviceGroups.length > 0 ? (
               <>
                 {/* Show count if many services */}
