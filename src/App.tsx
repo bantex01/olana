@@ -12,6 +12,8 @@ import 'antd/dist/reset.css';
 import { DashboardHome } from './components/Dashboard/DashboardHome';
 import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
+import { ServicesPage } from './components/Services/ServicesPage';
+
 
 const siderResponsiveStyle = `
   @media (max-width: 768px) {
@@ -35,6 +37,29 @@ const menuItems = [
   {
     key: 'services',
     icon: <NodeIndexOutlined />,
+    label: 'Services',
+    children: [
+      {
+        key: 'services-overview',
+        label: 'Overview',
+      },
+      {
+        key: 'services-catalog',
+        label: 'Service Catalog',
+      },
+      {
+        key: 'services-dependencies',
+        label: 'Dependencies',
+      },
+      {
+        key: 'services-health',
+        label: 'Health & Status',
+      },
+    ],
+  },
+  {
+    key: 'service-map',
+    icon: <DatabaseOutlined />,
     label: 'Service Map',
   },
   {
@@ -78,22 +103,27 @@ const App: React.FC = () => {
   };
 
   // Render content based on selected menu
-  const renderContent = () => {
-    switch (selectedKey) {
-      case 'home':
-        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
-      case 'services':
-        return <ServiceGraphPage />;
-      case 'incidents':
-        return <IncidentsPage />;
-      case 'analytics':
-        return <div>Analytics page (coming soon)</div>;
-      case 'admin':
-        return <div>Admin page (coming soon)</div>;
-      default:
-        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
-    }
-  };
+    const renderContent = () => {
+      switch (selectedKey) {
+        case 'home':
+          return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+        case 'services-overview':
+        case 'services-catalog':
+        case 'services-dependencies': 
+        case 'services-health':
+          return <ServicesPage activeTab={selectedKey} />;
+        case 'service-map':
+          return <ServiceGraphPage />;
+        case 'incidents':
+          return <IncidentsPage />;
+        case 'analytics':
+          return <div>Analytics page (coming soon)</div>;
+        case 'admin':
+          return <div>Admin page (coming soon)</div>;
+        default:
+          return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+      }
+    };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
