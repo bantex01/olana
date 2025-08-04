@@ -116,6 +116,60 @@ curl -s -X POST "$BASE_URL/telemetry" \
     "depends_on": []
   }'
 
+# Testing namespace dependencies
+
+echo "  → AWS account service"
+curl -s -X POST "$BASE_URL/telemetry" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_namespace": "AWS_ACCOUNT_PROD",
+    "service_name": "IAM",
+    "environment": "prod",
+    "team": "platform",
+    "component_type": "IAM",
+    "depends_on": []
+  }'
+
+
+echo "  → AWS network service"
+curl -s -X POST "$BASE_URL/telemetry" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_namespace": "AWS_NETWORK",
+    "service_name": "VPC_01",
+    "environment": "prod",
+    "team": "platform",
+    "component_type": "vpc",
+    "depends_on": []
+  }'
+
+
+echo "  → AWS database service (no instances)"
+curl -s -X POST "$BASE_URL/telemetry" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_namespace": "AWS_LB_POOL",
+    "service_name": "ALB",
+    "environment": "prod",
+    "team": "platform",
+    "component_type": "load_balancer",
+    "depends_on": [{"service_namespace":"AWS_NETWORK", "service_name":"VPC_01"}]
+  }'
+
+
+echo "  → TEST_NS database service (no instances)"
+curl -s -X POST "$BASE_URL/telemetry" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_namespace": "TEST_NS",
+    "service_name": "database",
+    "environment": "prod",
+    "team": "platform",
+    "component_type": "database",
+    "depends_on": [{"service_namespace":"AWS_LB_POOL", "service_name":"ALB"},{"service_namespace":"AWS_ACCOUNT_PROD", "service_name":"IAM"}]
+  }'
+
+
 echo ""
 echo "🚨 Creating test alerts..."
 
