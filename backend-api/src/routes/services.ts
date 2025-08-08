@@ -268,5 +268,270 @@ export function createServicesRoutes(pool: Pool): Router {
     }
     });
 
+      router.get('/services/:namespace/:name', async (req, res) => {
+    try {
+      const { namespace, name } = req.params;
+
+      // Get base service information
+      const serviceQuery = `
+        SELECT
+          service_namespace,
+          service_name,
+          environment,
+          team,
+          component_type,
+          created_at,
+          last_seen,
+          tags,
+          external_calls,
+          database_calls,
+          rpc_calls,
+          tag_sources
+        FROM services
+        WHERE service_namespace = $1 AND service_name = $2
+      `;
+
+      const serviceResult = await pool.query(serviceQuery, [namespace, name]);
+
+      if (serviceResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Service not found' });
+      }
+
+      const service = serviceResult.rows[0];
+
+      // Get service dependencies (both incoming and outgoing)
+        const dependenciesQuery = `
+            SELECT
+            from_service_namespace as source_namespace,
+            from_service_name as source_name,
+            to_service_namespace as target_namespace,
+            to_service_name as target_name,
+            'service' as dependency_type,
+            created_at as first_seen,
+            last_seen
+            FROM service_dependencies
+            WHERE (from_service_namespace = $1 AND from_service_name = $2)
+            OR (to_service_namespace = $1 AND to_service_name = $2)
+        `;
+
+
+      const dependenciesResult = await pool.query(dependenciesQuery, [namespace, name]);
+
+      // Separate incoming and outgoing dependencies
+        const incomingDeps = dependenciesResult.rows.filter(dep =>
+            dep.target_namespace === namespace && dep.target_name === name
+        );
+        const outgoingDeps = dependenciesResult.rows.filter(dep =>
+            dep.source_namespace === namespace && dep.source_name === name
+        );
+
+      // Get current alerts for this service
+        const alertsQuery = `
+            SELECT
+            id,
+            service_namespace,
+            service_name,
+            instance_id,
+            severity,
+            message,
+            status,
+            incident_start,
+            incident_end,
+            alert_source,
+            external_alert_id,
+            created_at,
+            updated_at
+            FROM alert_incidents
+            WHERE service_namespace = $1 AND service_name = $2
+            AND status = 'firing'
+            ORDER BY incident_start DESC
+        `;
+
+      const alertsResult = await pool.query(alertsQuery, [namespace, name]);
+
+      // Get alert history (last 30 days)
+    const alertHistoryQuery = `
+        SELECT
+        DATE(incident_start) as date,
+        COUNT(*) as alert_count,
+        COUNT(CASE WHEN severity = 'critical' THEN 1 END) as critical_count,
+        COUNT(CASE WHEN severity = 'warning' THEN 1 END) as warning_count
+        FROM alert_incidents
+        WHERE service_namespace = $1 AND service_name = $2
+        AND incident_start >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(incident_start)
+        ORDER BY date DESC
+    `;
+
+
+      const alertHistoryResult = await pool.query(alertHistoryQuery, [namespace, name]);
+
+      // Calculate service metrics
+      const now = new Date();
+      const uptime = service.created_at ?
+    Math.floor((now.getTime() - new Date(service.created_at).getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+      const response = {
+        service: {
+          namespace: service.service_namespace,
+          name: service.service_name,
+          environment: service.environment,
+          team: service.team,
+          component_type: service.component_type,
+          created_at: service.created_at,
+          last_seen: service.last_seen,
+        tags: service.tags ? service.tags.reduce((acc: Record<string, string>, tag: string) => {
+            acc[tag] = tag; // Convert array to object format expected by frontend
+            return acc;
+        }, {}) : {},
+        tag_sources: service.tag_sources || {},
+          external_calls: service.external_calls || {},
+          database_calls: service.database_calls || {},
+          rpc_calls: service.rpc_calls || {},
+          uptime_days: uptime
+        },
+        dependencies: {
+          incoming: incomingDeps.map(dep => ({
+            namespace: dep.source_namespace,
+            name: dep.source_name,
+            type: dep.dependency_type,
+            first_seen: dep.first_seen,
+            last_seen: dep.last_seen
+          })),
+          outgoing: outgoingDeps.map(dep => ({
+            namespace: dep.target_namespace,
+            name: dep.target_name,
+            type: dep.dependency_type,
+            first_seen: dep.first_seen,
+            last_seen: dep.last_seen
+          }))
+        },
+        alerts: {
+          current: alertsResult.rows,
+          history: alertHistoryResult.rows
+        },
+        metrics: {
+          dependency_count: incomingDeps.length + outgoingDeps.length,
+          incoming_dependency_count: incomingDeps.length,
+          outgoing_dependency_count: outgoingDeps.length,
+          current_alert_count: alertsResult.rows.length,
+          critical_alert_count: alertsResult.rows.filter(a => a.severity === 'critical').length,
+          external_calls_count: Object.keys(service.external_calls || {}).length,
+          database_calls_count: Object.keys(service.database_calls || {}).length,
+          rpc_calls_count: Object.keys(service.rpc_calls || {}).length
+        }
+      };
+
+      res.json(response);
+
+    } catch (error) {
+      console.error('Error fetching service details:', error);
+      res.status(500).json({ error: 'Failed to fetch service details' });
+    }
+  });
+
+  // Get all services with basic information for catalog/filtering
+  router.get('/services', async (req, res) => {
+    try {
+      const { environment, namespace, team, search } = req.query;
+      
+      let query = `
+        SELECT 
+          s.service_namespace,
+          s.service_name,
+          s.environment,
+          s.team,
+          s.component_type,
+          s.created_at,
+          s.last_seen,
+          s.tags,
+          COUNT(DISTINCT ai.id) FILTER (WHERE ai.status = 'firing') as current_alert_count,
+          COUNT(DISTINCT ai.id) FILTER (WHERE ai.status = 'firing' AND ai.severity = 'critical') as critical_alert_count,
+          COUNT(DISTINCT sd_in.from_service_name) + COUNT(DISTINCT sd_out.to_service_name) as dependency_count
+        FROM services s
+        LEFT JOIN alert_incidents ai ON s.service_namespace = ai.service_namespace AND s.service_name = ai.service_name
+        LEFT JOIN service_dependencies sd_in ON s.service_namespace = sd_in.to_service_namespace AND s.service_name = sd_in.to_service_name
+        LEFT JOIN service_dependencies sd_out ON s.service_namespace = sd_out.from_service_namespace AND s.service_name = sd_out.from_service_name
+        WHERE 1=1
+      `;
+      
+      const queryParams: any[] = [];
+      let paramIndex = 1;
+      
+      // Add filters
+      if (environment) {
+        query += ` AND s.environment = $${paramIndex}`;
+        queryParams.push(environment);
+        paramIndex++;
+      }
+      
+      if (namespace) {
+        query += ` AND s.service_namespace = $${paramIndex}`;
+        queryParams.push(namespace);
+        paramIndex++;
+      }
+      
+      if (team) {
+        query += ` AND s.team = $${paramIndex}`;
+        queryParams.push(team);
+        paramIndex++;
+      }
+      
+      if (search) {
+        query += ` AND (s.service_name ILIKE $${paramIndex} OR s.service_namespace ILIKE $${paramIndex})`;
+        queryParams.push(`%${search}%`);
+        paramIndex++;
+      }
+      
+      query += `
+        GROUP BY s.service_namespace, s.service_name, s.environment, s.team, s.component_type, s.created_at, s.last_seen, s.tags
+        ORDER BY s.last_seen DESC
+      `;
+      
+      const result = await pool.query(query, queryParams);
+      
+      const services = result.rows.map(row => ({
+        namespace: row.service_namespace,
+        name: row.service_name,
+        environment: row.environment,
+        team: row.team,
+        component_type: row.component_type,
+        created_at: row.created_at,
+        last_seen: row.last_seen,
+        tags: row.tags ? row.tags.reduce((acc: Record<string, string>, tag: string) => {
+          acc[tag] = tag;
+          return acc;
+        }, {}) : {},
+        current_alert_count: parseInt(row.current_alert_count) || 0,
+        critical_alert_count: parseInt(row.critical_alert_count) || 0,
+        dependency_count: parseInt(row.dependency_count) || 0,
+        uptime_days: row.created_at ? 
+          Math.floor((new Date().getTime() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24)) : null
+      }));
+      
+      // Also return filter options for UI
+      const filtersQuery = `
+        SELECT 
+          ARRAY_AGG(DISTINCT environment ORDER BY environment) as environments,
+          ARRAY_AGG(DISTINCT service_namespace ORDER BY service_namespace) as namespaces,
+          ARRAY_AGG(DISTINCT team ORDER BY team) as teams
+        FROM services
+        WHERE environment IS NOT NULL AND service_namespace IS NOT NULL AND team IS NOT NULL
+      `;
+      
+      const filtersResult = await pool.query(filtersQuery);
+      
+      res.json({
+        services,
+        filters: filtersResult.rows[0] || { environments: [], namespaces: [], teams: [] },
+        total: services.length
+      });
+      
+    } catch (error) {
+      console.error('Error fetching services list:', error);
+      res.status(500).json({ error: 'Failed to fetch services list' });
+    }
+  });
+
   return router;
 }    

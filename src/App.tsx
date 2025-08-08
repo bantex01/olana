@@ -13,6 +13,7 @@ import { DashboardHome } from './components/Dashboard/DashboardHome';
 import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
 import { ServicesPage } from './components/Services/ServicesPage';
+import { ServiceDetailPage } from './components/Services/ServiceDetailPage';
 
 
 const siderResponsiveStyle = `
@@ -82,6 +83,7 @@ const menuItems = [
 const App: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedKey, setSelectedKey] = useState('home');
+  const [serviceDetailParams, setServiceDetailParams] = useState<{namespace: string, name: string} | null>(null);
   const [dashboardLastUpdated, setDashboardLastUpdated] = useState<Date | null>(null);
   
   const {
@@ -90,40 +92,68 @@ const App: React.FC = () => {
 
   // Get page title based on selected menu
   const getPageTitle = (key: string) => {
+    if (serviceDetailParams) {
+      return `${serviceDetailParams.namespace}/${serviceDetailParams.name}`;
+    }
     const item = menuItems.find(item => item.key === key);
     return item?.label || 'Dashboard';
   };
 
+
   // Get breadcrumb items
   const getBreadcrumbs = (key: string) => {
+    if (serviceDetailParams) {
+      return [
+        { title: 'Alert Hub' },
+        { title: 'Service Catalog' },
+        { title: `${serviceDetailParams.namespace}/${serviceDetailParams.name}` }
+      ];
+    }
     return [
       { title: 'Alert Hub' },
       { title: getPageTitle(key) }
     ];
   };
 
+
   // Render content based on selected menu
-    const renderContent = () => {
-      switch (selectedKey) {
-        case 'home':
-          return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
-        case 'services-overview':
-        case 'services-catalog':
-        case 'services-dependencies': 
-        case 'services-health':
-          return <ServicesPage activeTab={selectedKey} />;
-        case 'service-map':
-          return <ServiceGraphPage />;
-        case 'incidents':
-          return <IncidentsPage />;
-        case 'analytics':
-          return <div>Analytics page (coming soon)</div>;
-        case 'admin':
-          return <div>Admin page (coming soon)</div>;
-        default:
-          return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
-      }
-    };
+  const renderContent = () => {
+    // Check if we're viewing a service detail
+    if (serviceDetailParams) {
+      return <ServiceDetailPage 
+        namespace={serviceDetailParams.namespace} 
+        name={serviceDetailParams.name}
+        onBack={() => {
+          setServiceDetailParams(null);
+          setSelectedKey('services-catalog');
+        }}
+      />;
+    }
+
+    switch (selectedKey) {
+      case 'home':
+        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+      case 'services-overview':
+      case 'services-catalog':
+      case 'services-dependencies':
+      case 'services-health':
+        return <ServicesPage 
+          activeTab={selectedKey} 
+          onServiceSelect={(namespace: string, name: string) => setServiceDetailParams({namespace, name})}
+        />;
+      case 'service-map':
+        return <ServiceGraphPage />;
+      case 'incidents':
+        return <IncidentsPage />;
+      case 'analytics':
+        return <div>Analytics page (coming soon)</div>;
+      case 'admin':
+        return <div>Admin page (coming soon)</div>;
+      default:
+        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+    }
+  };
+
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
