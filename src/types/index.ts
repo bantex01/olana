@@ -62,3 +62,92 @@ export type ServiceGroup = {
   latestActivity: string;
   longestDuration: number;
 };
+
+  // Service Detail Types
+  export interface ServiceDependency {
+    namespace: string;
+    name: string;
+    type: string;
+    first_seen: string;
+    last_seen: string;
+  }
+
+  export interface ServiceAlertHistory {
+    date: string;
+    alert_count: number;
+    critical_count: number;
+    warning_count: number;
+    fatal_count?: number;
+  }
+
+  export interface ServiceMetrics {
+    dependency_count: number;
+    incoming_dependency_count: number;
+    outgoing_dependency_count: number;
+    current_alert_count: number;
+    critical_alert_count: number;
+    external_calls_count: number;
+    database_calls_count: number;
+    rpc_calls_count: number;
+  }
+
+  export interface ServiceDetail {
+    namespace: string;
+    name: string;
+    environment: string;
+    team: string;
+    component_type: string;
+    created_at: string;
+    last_seen: string;
+    tags: Record<string, string>;
+    tag_sources: Record<string, string>;
+    external_calls: Record<string, any>;
+    database_calls: Record<string, any>;
+    rpc_calls: Record<string, any>;
+    uptime_days: number | null;
+  }
+
+  export interface ServiceDetailResponse {
+    service: ServiceDetail;
+    dependencies: {
+      incoming: ServiceDependency[];
+      outgoing: ServiceDependency[];
+    };
+    alerts: {
+      current: Alert[];
+      history: ServiceAlertHistory[];
+    };
+    metrics: ServiceMetrics;
+  }
+
+  // API Service for fetching service details
+  export interface ServiceDetailAPI {
+    getServiceDetail: (namespace: string, name: string) => Promise<ServiceDetailResponse>;
+  }
+
+  // Service Summary for catalog/listing
+  export interface ServiceSummary {
+    namespace: string;
+    name: string;
+    environment: string;
+    team: string;
+    component_type: string;
+    created_at: string;
+    last_seen: string;
+    tags: Record<string, string>;
+    current_alert_count: number;
+    critical_alert_count: number;
+    dependency_count: number;
+    uptime_days: number | null;
+  }
+
+  // Services list response
+  export interface ServicesListResponse {
+    services: ServiceSummary[];
+    filters: {
+      environments: string[];
+      namespaces: string[];
+      teams: string[];
+    };
+    total: number;
+  }
