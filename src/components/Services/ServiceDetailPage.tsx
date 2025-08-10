@@ -3,6 +3,7 @@ import { Card, Typography, Spin, Alert, Breadcrumb, Button, Tag, Space, Avatar, 
 import { ArrowLeftOutlined, HomeOutlined, DatabaseOutlined, ClockCircleOutlined, TeamOutlined, SettingOutlined, EnvironmentOutlined, AlertOutlined, LinkOutlined, ApiOutlined } from '@ant-design/icons';
 import type { ServiceDetailResponse } from '../../types';
 import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 import { ServiceHealthCard } from './ServiceHealthCard';
 import { ServiceConnectivityCard } from './ServiceConnectivityCard';
 import { ServiceInstrumentationCard } from './ServiceInstrumentationCard';
@@ -49,7 +50,7 @@ import { ServiceConfigurationCard } from './ServiceConfigurationCard';
           const data: ServiceDetailResponse = await response.json();
           setServiceData(data);
         } catch (err) {
-          console.error('Error fetching service detail:', err);
+          logger.error('Error fetching service detail:', err);
           setError(err instanceof Error ? err.message : 'An unexpected error occurred');
         } finally {
           setLoading(false);
@@ -71,7 +72,7 @@ import { ServiceConfigurationCard } from './ServiceConfigurationCard';
                 setServiceData(data);
               }
             } catch (err) {
-              console.error('Error refreshing service detail:', err);
+              logger.error('Error refreshing service detail:', err);
             }
           };
           fetchServiceDetail();

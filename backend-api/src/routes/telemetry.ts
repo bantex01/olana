@@ -29,12 +29,12 @@ export function createTelemetryRoutes(pool: Pool): Router {
       
       const t = req.body as Telemetry;
       
-      console.log('Processing OTEL telemetry', {
+      req.log.info({
         service: `${t.service_namespace}::${t.service_name}`,
         tagCount: t.tags?.length || 0,
         dependencyCount: t.depends_on?.length || 0,
         hasEnrichment: !!(t.external_calls?.length || t.database_calls?.length || t.rpc_calls?.length)
-      });
+      }, 'Processing OTEL telemetry');
 
       // Convert telemetry data to ServiceUpdateData format
       const serviceUpdate: ServiceUpdateData = {
@@ -51,14 +51,14 @@ export function createTelemetryRoutes(pool: Pool): Router {
       };
 
       // Use unified upsert with tag merging
-      const upsertResult = await upsertService(client, serviceUpdate);
+      const upsertResult = await upsertService(client, serviceUpdate, req.log);
       
-      console.log('OTEL service upsert completed', {
+      req.log.info({
         service: `${t.service_namespace}::${t.service_name}`,
         created: upsertResult.created,
         updated: upsertResult.updated,
         tagChanges: upsertResult.tagChanges
-      });
+      }, 'OTEL service upsert completed');
 
       // Handle service dependencies (unchanged logic)
       // Clear existing dependencies for this service using natural key
@@ -76,7 +76,7 @@ export function createTelemetryRoutes(pool: Pool): Router {
           source: 'otel'
         };
         
-        await upsertService(client, targetServiceUpdate);
+        await upsertService(client, targetServiceUpdate, req.log);
         
         // Create dependency using natural keys
         await client.query(`
@@ -98,7 +98,7 @@ export function createTelemetryRoutes(pool: Pool): Router {
       
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Telemetry processing error:', error);
+      req.log.error({ error }, 'Telemetry processing failed');
       res.status(500).json({ error: "Failed to process telemetry" });
     } finally {
       client.release();

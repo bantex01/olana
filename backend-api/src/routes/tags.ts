@@ -19,7 +19,7 @@ export function createTagsRoutes(pool: Pool): Router {
         res.json({ tags });
         
     } catch (error) {
-        console.error('Tags fetch error:', error);
+        req.log.error({ error }, 'Tags fetch failed');
         res.status(500).json({ error: "Failed to fetch tags" });
     } finally {
         client.release();

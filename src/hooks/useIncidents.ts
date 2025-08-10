@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Alert, ServiceGroup } from '../types';
 import { API_BASE_URL } from '../utils/api';
+import { logger } from '../utils/logger';
 
 export type SortOption = 'service' | 'severity' | 'alertCount' | 'duration' | 'activity';
 export type SortDirection = 'asc' | 'desc';
@@ -90,7 +91,7 @@ export const useIncidents = () => {
       )].sort() as string[];
       setAvailableNamespaces(namespaces);
     } catch (err) {
-      console.error('Failed to fetch namespaces:', err);
+      logger.error('Failed to fetch namespaces:', err);
     }
   };
 
@@ -138,7 +139,7 @@ export const useIncidents = () => {
       setLastUpdated(new Date());
       
     } catch (err) {
-      console.error('Failed to fetch alerts:', err);
+      logger.error('Failed to fetch alerts:', err);
       setError('Failed to load alerts');
     } finally {
       setLoading(false);

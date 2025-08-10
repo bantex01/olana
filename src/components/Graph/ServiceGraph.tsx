@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Network, DataSet } from "vis-network/standalone/esm/vis-network";
 import type { Node, Edge, Alert, GraphFilters } from '../../types';
+import { logger } from '../../utils/logger';
 
 interface ServiceGraphProps {
   alerts: Alert[];
@@ -36,15 +37,15 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
       }
       
       const alertQuery = alertParams.toString() ? `?${alertParams.toString()}` : '';
-      console.log('Alert query:', alertQuery);
+      logger.debug('Alert query:', alertQuery);
       
       // Fetch graph and alerts using hooks
       const { nodes, edges } = await fetchGraphData(filters, includeDependentNamespaces);
       await fetchAlerts(alertQuery);
       
-      console.log('Received nodes:', nodes.length);
-      console.log('Received edges:', edges.length);
-      console.log('First few nodes:', nodes.slice(0, 3));
+      logger.debug('Received nodes:', nodes.length);
+      logger.debug('Received edges:', edges.length);
+      logger.debug('First few nodes:', nodes.slice(0, 3));
 
       // Process nodes for alert coloring
       const coloredNodes = nodes.map((n) => {
@@ -152,11 +153,11 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
       });
 
       if (graphRef.current) {
-        console.log('=== GRAPH RENDERING ===');
-        console.log('Graph ref exists, rendering with:');
-        console.log('- Colored nodes:', coloredNodes.length);
-        console.log('- Edges:', edges.length);
-        console.log('Sample colored node:', coloredNodes[0]);
+        logger.debug('=== GRAPH RENDERING ===');
+        logger.debug('Graph ref exists, rendering with:');
+        logger.debug('- Colored nodes:', coloredNodes.length);
+        logger.debug('- Edges:', edges.length);
+        logger.debug('Sample colored node:', coloredNodes[0]);
         
         const data = {
           nodes: new DataSet<Node>(coloredNodes),
@@ -226,14 +227,14 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
           }*/
         };
 
-        console.log('Creating new Network...');
+        logger.debug('Creating new Network...');
         const network = new Network(graphRef.current, data, options);
-        console.log('Network created successfully');
+        logger.debug('Network created successfully');
       } else {
-        console.log('ERROR: graphRef.current is null - cannot render graph');
+        logger.error('ERROR: graphRef.current is null - cannot render graph');
       }
     } catch (error) {
-      console.error('Failed to render graph:', error);
+      logger.error('Failed to render graph:', error);
     }
   };
 

@@ -4,6 +4,7 @@ import { ForkOutlined, ExpandOutlined, CompressOutlined, FilterOutlined, Setting
 import { Network, DataSet } from "vis-network/standalone/esm/vis-network";
 import type { ServiceDetailResponse, Node, Edge } from '../../types';
 import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -265,7 +266,7 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
       }, 500);
 
     } catch (error) {
-      console.error('Failed to render dependency graph:', error);
+      logger.error('Failed to render dependency graph:', error);
     } finally {
       setLoading(false);
     }

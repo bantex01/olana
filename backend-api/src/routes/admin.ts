@@ -31,7 +31,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
         }
         });
     } catch (error) {
-        console.error('Cleanup metrics error:', error);
+        req.log.error({ error }, 'Cleanup metrics fetch failed');
         res.status(500).json({ error: "Failed to fetch cleanup metrics" });
     }
     });
@@ -45,15 +45,15 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
         
         const result = await serviceCleanup.runCleanup();
         
-        res.json({
+        return res.json({
         status: "ok",
         message: "Manual cleanup completed",
         result
         });
     } catch (error) {
-        console.error('Manual cleanup error:', error);
+        req.log.error({ error }, 'Manual cleanup failed');
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        res.status(500).json({ error: `Manual cleanup failed: ${errorMessage}` });
+        return res.status(500).json({ error: `Manual cleanup failed: ${errorMessage}` });
     }
     });
 
@@ -71,7 +71,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
         }
         });
     } catch (error) {
-        console.error('Stale services preview error:', error);
+        req.log.error({ error }, 'Stale services preview failed');
         res.status(500).json({ error: "Failed to fetch stale services preview" });
     }
     });
@@ -87,7 +87,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
         deletedCount
         });
     } catch (error) {
-        console.error('Orphaned dependencies cleanup error:', error);
+        req.log.error({ error }, 'Orphaned dependencies cleanup failed');
         res.status(500).json({ error: "Failed to cleanup orphaned dependencies" });
     }
     });
@@ -108,7 +108,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
         }
       });
     } catch (error) {
-      console.error('Alertmanager status error:', error);
+      req.log.error({ error }, 'Alertmanager status fetch failed');
       res.status(500).json({ error: "Failed to fetch alertmanager status" });
     }
   });
@@ -181,7 +181,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
       }
       
     } catch (error) {
-      console.error('Incident health check error:', error);
+      req.log.error({ error }, 'Incident health check failed');
       res.status(500).json({ error: "Failed to check incident system health" });
     }
   });
@@ -235,7 +235,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
       }
       
     } catch (error) {
-      console.error('Incident cleanup error:', error);
+      req.log.error({ error }, 'Incident cleanup failed');
       res.status(500).json({ error: "Failed to cleanup old incidents" });
     }
   });
@@ -259,7 +259,7 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
       }
       
     } catch (error) {
-      console.error('Analytics refresh error:', error);
+      req.log.error({ error }, 'Analytics refresh failed');
       res.status(500).json({ error: "Failed to refresh analytics" });
     }
   });

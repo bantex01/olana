@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Typography, Spin, Alert, Button, Space } from 'antd';
 import { ReloadOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 import { ServiceDiscoveryStats } from './ServiceDiscoveryStats';
 import { ServiceRelationshipInsights } from './ServiceRelationshipInsights';
 import { ServiceQualityMetrics } from './ServiceQualityMetrics';
@@ -47,7 +48,7 @@ export const ServicesOverview: React.FC = () => {
       setLastUpdated(new Date());
       
     } catch (err) {
-      console.error('Failed to fetch services overview:', err);
+      logger.error('Failed to fetch services overview:', err);
       setError('Failed to load services overview data');
     } finally {
       setLoading(false);

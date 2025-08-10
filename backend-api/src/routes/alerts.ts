@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
 import { processManualAlert, resolveManualAlert } from '../utils/alertProcessing';
+import { handleRouteError, handleClientError } from '../utils/errorHandler';
 
 type Alert = {
   service_namespace: string;
@@ -23,10 +24,10 @@ export function createAlertsRoutes(pool: Pool): Router {
       const incidentId = parseInt(req.params.incidentId);
       
       if (isNaN(incidentId)) {
-        return res.status(400).json({ error: "Invalid incident ID" });
+        return handleClientError(res, "Invalid incident ID");
       }
       
-      const result = await resolveManualAlert(client, incidentId);
+      const result = await resolveManualAlert(client, incidentId, req.log);
       
       res.json({ 
         status: "ok",
@@ -38,9 +39,8 @@ export function createAlertsRoutes(pool: Pool): Router {
       });
       
     } catch (error) {
-      console.error('Resolve alert error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: `Failed to resolve alert: ${errorMessage}` });
+      const incidentId = parseInt(req.params.incidentId);
+      handleRouteError(error, res, req.log, 'resolve alert', { incidentId });
     } finally {
       client.release();
     }
@@ -55,9 +55,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       
       // Validate required fields
       if (!alertData.service_namespace || !alertData.service_name || !alertData.message) {
-        return res.status(400).json({ 
-          error: "Missing required fields: service_namespace, service_name, and message are required" 
-        });
+        return handleClientError(res, "Missing required fields: service_namespace, service_name, and message are required");
       }
       
       await client.query('BEGIN');
@@ -71,7 +69,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       `, [alertData.service_namespace, alertData.service_name]);
       
       // Process the alert using new incident system
-      const result = await processManualAlert(client, alertData);
+      const result = await processManualAlert(client, alertData, req.log);
       
       await client.query('COMMIT');
       
@@ -86,9 +84,8 @@ export function createAlertsRoutes(pool: Pool): Router {
       
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Create alert error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      res.status(500).json({ error: `Failed to create alert: ${errorMessage}` });
+      const alertData = req.body as Alert;
+      handleRouteError(error, res, req.log, 'create alert', { alertData });
     } finally {
       client.release();
     }
@@ -99,8 +96,7 @@ export function createAlertsRoutes(pool: Pool): Router {
     const client = await pool.connect();
     
     try {
-      console.log('=== ALERTS REQUEST ===');
-      console.log('Query params:', req.query);
+      req.log.debug({ queryParams: req.query }, 'Fetching alerts');
       
       // Parse filters
       const filters: any = {};
@@ -187,9 +183,7 @@ export function createAlertsRoutes(pool: Pool): Router {
 
       alertQuery += ` ORDER BY i.incident_start DESC`;
 
-      console.log('Alert query:', alertQuery);
-      console.log('Alert params:', params);
-      console.log('Param count:', params.length);
+      req.log.debug({ query: alertQuery, params, paramCount: params.length }, 'Executing alert query');
       
       const alertsResult = await client.query(alertQuery, params);
       
@@ -211,11 +205,11 @@ export function createAlertsRoutes(pool: Pool): Router {
         external_alert_id: row.external_alert_id
       }));
       
-      console.log(`Returning ${alerts.length} active incidents`);
+      req.log.info({ alertCount: alerts.length }, 'Returning active incidents');
       res.json(alerts);
       
     } catch (error) {
-      console.error('Alerts fetch error:', error);
+      req.log.error({ error }, 'Alerts fetch error');
       res.status(500).json({ error: "Failed to fetch alerts" });
     } finally {
       client.release();
@@ -230,7 +224,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       const hours = parseInt(req.query.hours as string) || 24;
       const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
       
-      console.log(`Getting timeline for ${namespace}::${serviceName} (last ${hours}h)`);
+      req.log.debug({ namespace, serviceName, hours }, 'Getting timeline');
       
       const timelineResult = await client.query(`
         SELECT 
@@ -284,8 +278,8 @@ export function createAlertsRoutes(pool: Pool): Router {
       });
       
     } catch (error) {
-      console.error('Timeline fetch error:', error);
-      res.status(500).json({ error: "Failed to fetch timeline" });
+      const { namespace, serviceName } = req.params;
+      handleRouteError(error, res, req.log, 'fetch timeline', { namespace, serviceName });
     } finally {
       client.release();
     }
@@ -299,7 +293,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       const hours = parseInt(req.query.hours as string) || 24;
       const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
       
-      console.log(`Getting detailed timeline for ${namespace}::${serviceName} (last ${hours}h)`);
+      req.log.debug({ namespace, serviceName, hours }, 'Getting detailed timeline');
       
       // Get incidents with enriched data
       const timelineResult = await client.query(`
@@ -401,8 +395,8 @@ export function createAlertsRoutes(pool: Pool): Router {
       });
       
     } catch (error) {
-      console.error('Detailed timeline fetch error:', error);
-      res.status(500).json({ error: "Failed to fetch detailed timeline" });
+      const { namespace, serviceName } = req.params;
+      handleRouteError(error, res, req.log, 'fetch detailed timeline', { namespace, serviceName });
     } finally {
       client.release();
     }
@@ -416,7 +410,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       const hours = parseInt(req.query.hours as string) || 24;
       const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
       
-      console.log(`Getting analytics for last ${hours} hours`);
+      req.log.debug({ hours }, 'Getting analytics');
       
       // Basic incident counts
       const countsResult = await client.query(`
@@ -533,7 +527,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       });
       
     } catch (error) {
-      console.error('Analytics error:', error);
+      req.log.error({ error }, 'Analytics error');
       res.status(500).json({ error: "Failed to fetch analytics" });
     } finally {
       client.release();
@@ -548,7 +542,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       const hours = parseInt(req.query.hours as string) || 168; // Default 7 days
       const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
       
-      console.log(`Analyzing patterns for last ${hours} hours`);
+      req.log.debug({ hours }, 'Analyzing patterns');
       
       // Find recurring alert patterns
       const patternsResult = await client.query(`
@@ -631,7 +625,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       });
       
     } catch (error) {
-      console.error('Pattern analysis error:', error);
+      req.log.error({ error }, 'Pattern analysis error');
       res.status(500).json({ error: "Failed to analyze patterns" });
     } finally {
       client.release();

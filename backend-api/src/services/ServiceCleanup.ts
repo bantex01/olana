@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { logger } from '../utils/logger';
 
 export interface ServiceCleanupConfig {
   ttlHours: number;
@@ -467,14 +468,9 @@ export default class ServiceCleanup {
    * Logging helper
    */
   private log(message: string, data?: any): void {
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
+    logger.info({ 
       service: 'ServiceCleanup',
-      message,
-      ...data
-    };
-    
-    console.log(`[${timestamp}] ServiceCleanup: ${message}`, data ? JSON.stringify(data, null, 2) : '');
+      ...data 
+    }, message);
   }
 }

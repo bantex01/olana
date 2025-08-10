@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { logger } from '../utils/logger';
 
 export function createExpressApp(): express.Application {
   const app = express();
@@ -8,7 +9,7 @@ export function createExpressApp(): express.Application {
 
     app.use((req, res, next) => {
     if (req.path.includes('/webhooks/')) {
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+      logger.info({ method: req.method, path: req.path }, 'Webhook request');
     }
     next();
   });
@@ -16,13 +17,13 @@ export function createExpressApp(): express.Application {
   // Add error handling for malformed JSON
   app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (error instanceof SyntaxError && 'body' in error) {
-      console.error('JSON parsing error:', error.message);
+      logger.error({ error: error.message }, 'JSON parsing error');
       return res.status(400).json({ 
         error: 'Invalid JSON payload',
         details: error.message 
       });
     }
-    next(error);
+    return next(error);
   });
 
 

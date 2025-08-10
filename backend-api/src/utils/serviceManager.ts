@@ -1,4 +1,5 @@
 import { PoolClient } from 'pg';
+import { Logger } from './logger';
 
 // Types for different service update sources
 export type ServiceSource = 'otel' | 'alertmanager' | 'user';
@@ -44,7 +45,8 @@ export interface ServiceRecord {
  */
 export async function upsertService(
   client: PoolClient,
-  updateData: ServiceUpdateData
+  updateData: ServiceUpdateData,
+  logger?: Logger
 ): Promise<{ created: boolean; updated: boolean; tagChanges: string[] }> {
   const serviceKey = `${updateData.service_namespace}::${updateData.service_name}`;
   
@@ -61,19 +63,24 @@ export async function upsertService(
 
     if (existingResult.rows.length === 0) {
       // Service doesn't exist - create new one
-      return await createNewService(client, updateData);
+      return await createNewService(client, updateData, logger);
     } else {
       // Service exists - merge and update
       const existing = existingResult.rows[0];
-      return await updateExistingService(client, existing, updateData);
+      return await updateExistingService(client, existing, updateData, logger);
     }
 
   } catch (error) {
-    console.error('Error upserting service:', {
+    const errorData = {
       service: serviceKey,
       source: updateData.source,
       error: error instanceof Error ? error.message : 'Unknown error'
-    });
+    };
+    if (logger) {
+      logger.error(errorData, 'Error upserting service');
+    } else {
+      console.error('Error upserting service:', errorData);
+    }
     throw error;
   }
 }
@@ -83,7 +90,8 @@ export async function upsertService(
  */
 async function createNewService(
   client: PoolClient,
-  updateData: ServiceUpdateData
+  updateData: ServiceUpdateData,
+  logger?: Logger
 ): Promise<{ created: boolean; updated: boolean; tagChanges: string[] }> {
   const serviceKey = `${updateData.service_namespace}::${updateData.service_name}`;
   
@@ -95,12 +103,17 @@ async function createNewService(
     tagSources[tag] = updateData.source;
   });
 
-  console.log('Creating new service', {
+  const logData = {
     service: serviceKey,
     source: updateData.source,
     tags: tags,
     tagCount: tags.length
-  });
+  };
+  if (logger) {
+    logger.info(logData, 'Creating new service');
+  } else {
+    console.log('Creating new service', logData);
+  }
 
   await client.query(`
     INSERT INTO services (
@@ -135,7 +148,8 @@ async function createNewService(
 async function updateExistingService(
   client: PoolClient,
   existing: any,
-  updateData: ServiceUpdateData
+  updateData: ServiceUpdateData,
+  logger?: Logger
 ): Promise<{ created: boolean; updated: boolean; tagChanges: string[] }> {
   const serviceKey = `${updateData.service_namespace}::${updateData.service_name}`;
   
@@ -159,7 +173,7 @@ async function updateExistingService(
   // Determine what fields to update based on source priority and changes
   const updates = determineFieldUpdates(existing, updateData);
 
-  console.log('Updating existing service', {
+  const logData = {
     service: serviceKey,
     source: updateData.source,
     existingTagCount: existingTags.length,
@@ -167,7 +181,12 @@ async function updateExistingService(
     finalTagCount: mergedTags.length,
     tagChanges: tagChanges,
     fieldUpdates: Object.keys(updates)
-  });
+  };
+  if (logger) {
+    logger.info(logData, 'Updating existing service');
+  } else {
+    console.log('Updating existing service', logData);
+  }
 
   // Build dynamic update query
   const { query, params } = buildUpdateQuery(

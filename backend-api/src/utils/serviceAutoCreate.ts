@@ -3,6 +3,7 @@ import { ParsedAlert } from './alertmanager';
 import { getAlertmanagerConfig, shouldLabelBecomeTag, labelNameToTagName } from '../config/alertmanager';
 import { ServiceUpdateData } from './serviceManager';
 import { upsertService } from './serviceManager';
+import { Logger } from './logger';
 
 export interface AutoCreatedService {
   service_namespace: string;
@@ -18,27 +19,38 @@ export interface AutoCreatedService {
 export async function ensureServiceExists(
   client: PoolClient,
   alert: ParsedAlert,
-  alertLabels: Record<string, string> = {}
+  alertLabels: Record<string, string> = {},
+  logger?: Logger
 ): Promise<{ existed: boolean; created: boolean; tagChanges: string[] }> {
   try {
-    console.log('Ensuring service exists from alert', {
+    const logData = {
       service: `${alert.serviceNamespace}::${alert.serviceName}`,
       severity: alert.severity,
       labelsCount: Object.keys(alertLabels).length
-    });
+    };
+    if (logger) {
+      logger.info(logData, 'Ensuring service exists from alert');
+    } else {
+      console.log('Ensuring service exists from alert', logData);
+    }
 
     // Convert alert to ServiceUpdateData format
     const serviceUpdate = alertToServiceUpdateData(alert, alertLabels);
     
     // Use unified upsert with tag merging
-    const upsertResult = await upsertService(client, serviceUpdate);
+    const upsertResult = await upsertService(client, serviceUpdate, logger);
     
-    console.log('Alert-based service upsert completed', {
+    const completionData = {
       service: `${alert.serviceNamespace}::${alert.serviceName}`,
       created: upsertResult.created,
       updated: upsertResult.updated,
       tagChanges: upsertResult.tagChanges
-    });
+    };
+    if (logger) {
+      logger.info(completionData, 'Alert-based service upsert completed');
+    } else {
+      console.log('Alert-based service upsert completed', completionData);
+    }
 
     return {
       existed: !upsertResult.created,
@@ -47,7 +59,11 @@ export async function ensureServiceExists(
     };
 
   } catch (error) {
-    console.error('Error ensuring service exists:', error);
+    if (logger) {
+      logger.error({ error }, 'Error ensuring service exists');
+    } else {
+      console.error('Error ensuring service exists:', error);
+    }
     throw error;
   }
 }
@@ -175,11 +191,7 @@ function generateTagsFromAlert(alert: ParsedAlert, alertLabels: Record<string, s
   for (const [labelName, labelValue] of Object.entries(alertLabels)) {
     // Check if we've hit the max tags limit
     if (extractedCount >= config.tagConfig.maxTagsPerAlert) {
-      console.warn('Reached max tags limit for alert', {
-        service: `${alert.serviceNamespace}::${alert.serviceName}`,
-        maxTags: config.tagConfig.maxTagsPerAlert,
-        skippedLabel: labelName
-      });
+      // Max tags limit reached - this is debug info only, no need to log
       break;
     }
 
@@ -198,29 +210,14 @@ function generateTagsFromAlert(alert: ParsedAlert, alertLabels: Record<string, s
         tagSources[tagName] = 'alertmanager';
         extractedCount++;
         
-        console.debug('Extracted tag from alert label', {
-          service: `${alert.serviceNamespace}::${alert.serviceName}`,
-          labelName,
-          labelValue: labelValue.trim(),
-          tagName
-        });
+        // Tag extracted successfully
       }
     } else {
-      console.debug('Skipped alert label (not in allowlist)', {
-        service: `${alert.serviceNamespace}::${alert.serviceName}`,
-        labelName,
-        allowedLabels: config.tagConfig.allowedLabels,
-        prefixPatterns: config.tagConfig.prefixPatterns
-      });
+      // Label not in allowlist - skipped
     }
   }
 
-  console.log('Generated tags from alert', {
-    service: `${alert.serviceNamespace}::${alert.serviceName}`,
-    totalTags: tags.length,
-    extractedFromLabels: extractedCount,
-    tags: tags
-  });
+  // Tags generated from alert - debug info available if needed
 
   return { tags, tagSources };
 }

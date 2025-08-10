@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Alert } from '../types';
 import { API_BASE_URL } from '../utils/api';
+import { logger } from '../utils/logger';
 
 export const useAlerts = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -11,7 +12,7 @@ export const useAlerts = () => {
       const alertData: Alert[] = await response.json();
       setAlerts(alertData);
     } catch (error) {
-      console.error('Failed to fetch alerts:', error);
+      logger.error('Failed to fetch alerts:', error);
     }
   };
 

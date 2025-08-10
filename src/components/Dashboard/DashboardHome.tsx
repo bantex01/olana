@@ -11,6 +11,7 @@ import {
   SortAscendingOutlined
 } from '@ant-design/icons';
 import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -88,7 +89,7 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ onLastUpdatedChang
       onLastUpdatedChange(now);
 
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      logger.error('Failed to fetch dashboard data:', error);
       setData(prev => ({
         ...prev,
         loading: false,
