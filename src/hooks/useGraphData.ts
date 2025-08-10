@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Node, Edge, GraphFilters } from '../types';
 import { API_BASE_URL } from '../utils/api';
+import { logger } from '../utils/logger';
 
 export const useGraphData = () => {
   const [availableNamespaces, setAvailableNamespaces] = useState<string[]>([]);
@@ -30,39 +31,41 @@ export const useGraphData = () => {
   const fetchGraphData = async (currentFilters: GraphFilters, includeDependents: boolean) => {
     try {
       const filterQuery = buildFilterQuery(currentFilters, includeDependents);
-      console.log('=== FRONTEND DEBUG ===');
-      console.log('Fetching with filters:', currentFilters);
-      console.log('Query string:', filterQuery);
-      console.log('includeDependentNamespaces:', includeDependents);
+      logger.debug('Fetching graph data', {
+        filters: currentFilters,
+        queryString: filterQuery,
+        includeDependents
+      });
       
       const graphRes = await fetch(`${API_BASE_URL}/graph${filterQuery}`);
       const graphData = await graphRes.json();
       const { nodes, edges }: { nodes: Node[]; edges: Edge[] } = graphData;
 
-      console.log('=== FRONTEND ENRICHMENT DEBUG ===');
       const nodeWithEnrichment = nodes.find(n => 
         (n.external_calls && n.external_calls.length > 0) || 
         (n.database_calls && n.database_calls.length > 0) || 
         (n.rpc_calls && n.rpc_calls.length > 0)
       );
       if (nodeWithEnrichment) {
-        console.log('Node with enrichment:', nodeWithEnrichment.id);
-        console.log('External calls:', nodeWithEnrichment.external_calls);
-        console.log('Database calls:', nodeWithEnrichment.database_calls);
-        console.log('RPC calls:', nodeWithEnrichment.rpc_calls);
+        logger.debug('Node enrichment data found', {
+          nodeId: nodeWithEnrichment.id,
+          externalCalls: nodeWithEnrichment.external_calls,
+          databaseCalls: nodeWithEnrichment.database_calls,
+          rpcCalls: nodeWithEnrichment.rpc_calls
+        });
       } else {
-        console.log('No nodes found with enrichment data');
+        logger.debug('No nodes found with enrichment data');
       }
-      console.log('==================================');
 
-      console.log('Received nodes:', nodes.length);
-      console.log('Received edges:', edges.length);
-      console.log('First few nodes:', nodes.slice(0, 3));
-      console.log('Backend response:', graphData);
+      logger.info('Graph data received', {
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        sampleNodes: nodes.slice(0, 3)
+      });
 
       return { nodes, edges };
     } catch (error) {
-      console.error('Failed to fetch graph data:', error);
+      logger.error('Failed to fetch graph data', error);
       throw error;
     }
   };
@@ -76,7 +79,7 @@ export const useGraphData = () => {
         .map((node: Node) => node.id);
       setAvailableNamespaces([...new Set(namespaces)].sort());
     } catch (error) {
-      console.error('Failed to fetch namespaces:', error);
+      logger.error('Failed to fetch namespaces', error);
     }
   };
 
@@ -86,7 +89,7 @@ export const useGraphData = () => {
       const data = await response.json();
       setNamespaceDeps(data);
     } catch (error) {
-      console.error('Failed to fetch namespace dependencies:', error);
+      logger.error('Failed to fetch namespace dependencies', error);
     }
   };
 

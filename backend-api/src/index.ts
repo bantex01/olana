@@ -15,6 +15,8 @@ import { createGraphRoutes } from './routes/graph';
 import { createAdminRoutes } from './routes/admin';
 import { getAlertmanagerConfig } from './config/alertmanager';
 import { createAlertmanagerRoutes } from './routes/alertmanager';
+import { logger } from './utils/logger';
+import { requestTracingMiddleware } from './middleware/requestTracing';
 
 
 // Load environment variables
@@ -28,6 +30,9 @@ const cleanupConfig = getCleanupConfig();
 
 const serviceCleanup = new ServiceCleanup(pool, cleanupConfig);
 const alertmanagerConfig = getAlertmanagerConfig();
+
+// Add request tracing middleware
+app.use(requestTracingMiddleware);
 
 app.use(createHealthRoutes(pool));
 app.use(createAlertmanagerRoutes(pool, alertmanagerConfig));
@@ -43,38 +48,38 @@ setupGracefulShutdown(pool, serviceCleanup);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log('Database connection pool initialized');
-  console.log('Natural key linking schema active');
+  logger.info(`Server running on http://localhost:${PORT}`);
+  logger.info('Database connection pool initialized');
+  logger.info('Natural key linking schema active');
 
-  console.log('Alertmanager webhook configuration:', {
+  logger.info({
     enabled: alertmanagerConfig.webhookEnabled,
     defaultNamespace: alertmanagerConfig.defaultNamespace,
     endpoint: `http://localhost:${PORT}/webhooks/alertmanager`
-  });
+  }, 'Alertmanager webhook configuration');
   
   // Start ServiceCleanup after server is running
-  console.log('Starting ServiceCleanup...');
+  logger.info('Starting ServiceCleanup...');
   serviceCleanup.start();
   
   // Log cleanup configuration
-  console.log('ServiceCleanup configuration:', {
+  logger.info({
     enabled: cleanupConfig.enabled,
     ttlHours: cleanupConfig.ttlHours,
     intervalHours: cleanupConfig.intervalHours,
     maxServicesPerRun: cleanupConfig.maxServicesPerRun,
     dryRun: cleanupConfig.dryRun
-  });
+  }, 'ServiceCleanup configuration');
 });
 
 const alertConfig = getAlertmanagerConfig();
-console.log('Alertmanager tag config loaded:', {
+logger.info({
   allowedLabels: alertConfig.tagConfig.allowedLabels,
   prefixPatterns: alertConfig.tagConfig.prefixPatterns,
   maxTagsPerAlert: alertConfig.tagConfig.maxTagsPerAlert
-});
+}, 'Alertmanager tag config loaded');
 
 // Temporary test - remove after verification
 import { upsertService } from './utils/serviceManager';
 
-console.log('Service manager utility loaded successfully');
+logger.info('Service manager utility loaded successfully');

@@ -5,6 +5,7 @@ import type { ServiceSummary, ServiceDetailResponse } from '../../types';
 import { ServiceSummaryCard } from './ServiceSummaryCard';
 import { ServiceDetailPage } from './ServiceDetailPage';
 import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 
 const { Text } = Typography;
 
@@ -46,7 +47,7 @@ export const ServiceExpandableCard: React.FC<ServiceExpandableCardProps> = ({
       const data: ServiceDetailResponse = await response.json();
       setServiceDetail(data);
     } catch (err) {
-      console.error('Error fetching service detail:', err);
+      logger.error('Error fetching service detail:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);

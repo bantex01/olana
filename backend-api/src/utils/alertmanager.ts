@@ -1,4 +1,5 @@
 import { validateAlertLabels, validateParsedAlert, sanitizeParsedAlert } from './validation';
+import { Logger } from './logger';
 
 export interface AlertmanagerAlert {
   status: 'firing' | 'resolved';
@@ -33,26 +34,33 @@ export interface ParsedAlert {
 
 export function parseAlertmanagerAlert(
   alert: AlertmanagerAlert, 
-  defaultNamespace: string
+  defaultNamespace: string,
+  logger?: Logger
 ): ParsedAlert | null {
   const { labels, annotations, status, startsAt, endsAt } = alert;
 
   // Pre-validate labels
   const labelValidation = validateAlertLabels(labels);
   if (!labelValidation.isValid) {
-    console.warn('Alert failed label validation:', labelValidation.errors);
+    if (logger) {
+      logger.warn({ errors: labelValidation.errors }, 'Alert failed label validation');
+    }
     return null;
   }
 
   // Log warnings
   if (labelValidation.warnings.length > 0) {
-    console.warn('Alert label warnings:', labelValidation.warnings);
+    if (logger) {
+      logger.warn({ warnings: labelValidation.warnings }, 'Alert label warnings');
+    }
   }
 
   // Extract required service_name with fallback priority
   const serviceName = labels.service_name || labels.service || labels.job;
   if (!serviceName) {
-    console.warn('Alert missing required service identifier:', Object.keys(labels));
+    if (logger) {
+      logger.warn({ availableLabels: Object.keys(labels) }, 'Alert missing required service identifier');
+    }
     return null;
   }
 
@@ -60,7 +68,9 @@ export function parseAlertmanagerAlert(
   let serviceNamespace = labels.service_namespace || labels.namespace || defaultNamespace;
   if (!serviceNamespace || serviceNamespace.trim() === '') {
     serviceNamespace = defaultNamespace;
-    console.log(`Using default namespace '${defaultNamespace}' for service '${serviceName}'`);
+    if (logger) {
+      logger.debug({ defaultNamespace, serviceName }, 'Using default namespace for service');
+    }
   }
 
   // Extract instance ID with fallback
@@ -91,13 +101,17 @@ export function parseAlertmanagerAlert(
   // Validate parsed alert
   const validation = validateParsedAlert(parsedAlert);
   if (!validation.isValid) {
-    console.warn('Parsed alert failed validation:', validation.errors);
+    if (logger) {
+      logger.warn({ errors: validation.errors }, 'Parsed alert failed validation');
+    }
     return null;
   }
 
   // Log warnings
   if (validation.warnings.length > 0) {
-    console.warn('Parsed alert warnings:', validation.warnings);
+    if (logger) {
+      logger.warn({ warnings: validation.warnings }, 'Parsed alert warnings');
+    }
   }
 
   // Sanitize and return
@@ -144,19 +158,24 @@ function createExternalAlertId(labels: Record<string, string>): string {
 
 export function parseAlertmanagerWebhook(
   webhook: AlertmanagerWebhook,
-  defaultNamespace: string
+  defaultNamespace: string,
+  logger?: Logger
 ): ParsedAlert[] {
   const parsedAlerts: ParsedAlert[] = [];
 
   for (const alert of webhook.alerts) {
-    const parsed = parseAlertmanagerAlert(alert, defaultNamespace);
+    const parsed = parseAlertmanagerAlert(alert, defaultNamespace, logger);
     if (parsed) {
       parsedAlerts.push(parsed);
     } else {
-      console.warn('Skipped alert due to missing required fields');
+      if (logger) {
+        logger.warn('Skipped alert due to missing required fields');
+      }
     }
   }
 
-  console.log(`Parsed ${parsedAlerts.length} of ${webhook.alerts.length} alerts`);
+  if (logger) {
+    logger.info({ parsedCount: parsedAlerts.length, totalCount: webhook.alerts.length }, 'Webhook parsing completed');
+  }
   return parsedAlerts;
 }

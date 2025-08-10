@@ -3,6 +3,7 @@ import { Typography, Table, Tag, Alert as AntAlert, Spin, Space, Button } from '
 import { AlertOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useIncidents } from '../../hooks/useIncidents';
 import type { Alert, ServiceGroup } from '../../types';
+import { logger } from '../../utils/logger';
 import { AlertsFilters } from './AlertsFilters';
 import { ServiceRow } from './ServiceRow';
 import { ExpandedAlerts } from './ExpandedAlerts';
@@ -43,24 +44,24 @@ const captureScrollPosition = () => {
     (window.pageYOffset || document.documentElement.scrollTop);
   
   scrollPositionRef.current = scrollTop;
-  console.log('🔍 Captured scroll position:', scrollTop);
+  logger.debug('🔍 Captured scroll position:', scrollTop);
 };
 
 // Restore scroll position after auto-refresh
 const restoreScrollPosition = () => {
   if (isAutoRefreshRef.current) {
-    console.log('🔄 Attempting to restore scroll position:', scrollPositionRef.current);
+    logger.debug('🔄 Attempting to restore scroll position:', scrollPositionRef.current);
     
     setTimeout(() => {
       if (pageContainerRef.current) {
-        console.log('📦 Using container scroll');
+        logger.debug('📦 Using container scroll');
         pageContainerRef.current.scrollTop = scrollPositionRef.current;
       } else {
-        console.log('🌐 Using window scroll');
+        logger.debug('🌐 Using window scroll');
         window.scrollTo(0, scrollPositionRef.current);
       }
       isAutoRefreshRef.current = false;
-      console.log('✅ Scroll restoration complete');
+      logger.debug('✅ Scroll restoration complete');
     }, 10);
   }
 };

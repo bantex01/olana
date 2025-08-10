@@ -164,7 +164,7 @@ export function createServicesRoutes(pool: Pool): Router {
             const tags = tagResult.rows[0];
             const uniqueTags = uniqueTagsResult.rows[0];
 
-            res.json({
+            return res.json({
             summary: {
                 total_services: parseInt(discovery.total_services),
                 active_services: parseInt(discovery.active_services),
@@ -224,8 +224,8 @@ export function createServicesRoutes(pool: Pool): Router {
             });
 
         } catch (error) {
-            console.error('Services overview error:', error);
-            res.status(500).json({ error: "Failed to fetch services overview" });
+            req.log.error({ error }, 'Services overview failed');
+            return res.status(500).json({ error: "Failed to fetch services overview" });
         } finally {
             client.release();
         }
@@ -254,15 +254,16 @@ export function createServicesRoutes(pool: Pool): Router {
         return res.status(404).json({ error: "Service not found" });
         }
         
-        res.json({ 
+        return res.json({ 
         status: "ok", 
         service: `${namespace}::${name}`,
         tags: result.rows[0].tags 
         });
         
     } catch (error) {
-        console.error('Tag update error:', error);
-        res.status(500).json({ error: "Failed to update tags" });
+        const { namespace, name } = req.params;
+        req.log.error({ error, namespace, name }, 'Tag update failed');
+        return res.status(500).json({ error: "Failed to update tags" });
     } finally {
         client.release();
     }
@@ -422,11 +423,12 @@ export function createServicesRoutes(pool: Pool): Router {
         }
       };
 
-      res.json(response);
+      return res.json(response);
 
     } catch (error) {
-      console.error('Error fetching service details:', error);
-      res.status(500).json({ error: 'Failed to fetch service details' });
+      const { namespace, name } = req.params;
+      req.log.error({ error, namespace, name }, 'Service details fetch failed');
+      return res.status(500).json({ error: 'Failed to fetch service details' });
     }
   });
 
@@ -521,15 +523,15 @@ export function createServicesRoutes(pool: Pool): Router {
       
       const filtersResult = await pool.query(filtersQuery);
       
-      res.json({
+      return res.json({
         services,
         filters: filtersResult.rows[0] || { environments: [], namespaces: [], teams: [] },
         total: services.length
       });
       
     } catch (error) {
-      console.error('Error fetching services list:', error);
-      res.status(500).json({ error: 'Failed to fetch services list' });
+      req.log.error({ error }, 'Services list fetch failed');
+      return res.status(500).json({ error: 'Failed to fetch services list' });
     }
   });
 

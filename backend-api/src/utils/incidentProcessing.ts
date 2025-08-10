@@ -1,4 +1,5 @@
 import { PoolClient } from 'pg';
+import { Logger } from './logger';
 import { 
   generateAlertFingerprint, 
   validateAlertIdentity, 
@@ -34,7 +35,8 @@ export interface IncidentProcessingResult {
  */
 export async function processIncident(
   client: PoolClient,
-  alert: ProcessedAlert
+  alert: ProcessedAlert,
+  logger: Logger
 ): Promise<IncidentProcessingResult> {
   try {
     // Extract and validate alert identity
@@ -49,23 +51,23 @@ export async function processIncident(
     const fingerprint = generateAlertFingerprint(identity);
     const displayId = createAlertDisplayId(identity);
 
-    console.log('Processing incident', {
+    logger.info({
       displayId,
       fingerprint,
       status: alert.status,
       eventTime: alert.eventTime.toISOString()
-    });
+    }, 'Processing incident');
 
     if (alert.status === 'firing') {
-      return await handleFiringAlert(client, alert, fingerprint, displayId);
+      return await handleFiringAlert(client, alert, fingerprint, displayId, logger);
     } else if (alert.status === 'resolved') {
-      return await handleResolvedAlert(client, alert, fingerprint, displayId);
+      return await handleResolvedAlert(client, alert, fingerprint, displayId, logger);
     } else {
       throw new Error(`Unknown alert status: ${alert.status}`);
     }
 
   } catch (error) {
-    console.error('Error processing incident:', error);
+    logger.error({ error }, 'Error processing incident');
     throw error;
   }
 }
@@ -77,7 +79,8 @@ async function handleFiringAlert(
   client: PoolClient,
   alert: ProcessedAlert,
   fingerprint: string,
-  displayId: string
+  displayId: string,
+  logger: Logger
 ): Promise<IncidentProcessingResult> {
   
   // Check for existing incident with this fingerprint
@@ -91,7 +94,7 @@ async function handleFiringAlert(
 
   if (existingResult.rows.length === 0) {
     // No existing incident - create new one
-    return await createNewIncident(client, alert, fingerprint, displayId);
+    return await createNewIncident(client, alert, fingerprint, displayId, logger);
   }
 
   const existingIncident = existingResult.rows[0];
@@ -104,12 +107,13 @@ async function handleFiringAlert(
       'updated', 
       alert, 
       displayId,
-      'incident_updated'
+      'incident_updated',
+      logger
     );
   } else {
     // Previous incident was resolved - create new incident for this occurrence
     // This enables proper timeline tracking: alert can fire → resolve → fire again
-    return await createNewIncident(client, alert, fingerprint, displayId);
+    return await createNewIncident(client, alert, fingerprint, displayId, logger);
   }
 }
 
@@ -120,7 +124,8 @@ async function handleResolvedAlert(
   client: PoolClient,
   alert: ProcessedAlert,
   fingerprint: string,
-  displayId: string
+  displayId: string,
+  logger: Logger
 ): Promise<IncidentProcessingResult> {
   
   // Find the currently firing incident for this fingerprint
@@ -134,8 +139,8 @@ async function handleResolvedAlert(
 
   if (firingResult.rows.length === 0) {
     // No firing incident found - create a resolved incident for tracking
-    console.warn(`No firing incident found for resolved alert: ${displayId}`);
-    return await createResolvedIncident(client, alert, fingerprint, displayId);
+    logger.warn({ displayId }, 'No firing incident found for resolved alert');
+    return await createResolvedIncident(client, alert, fingerprint, displayId, logger);
   }
 
   const firingIncident = firingResult.rows[0];
@@ -158,13 +163,15 @@ async function handleResolvedAlert(
     'resolved',
     alert,
     displayId,
-    'incident_resolved'
+    'incident_resolved',
+    logger
   );
 
-  console.log(`Resolved incident ${firingIncident.id}`, {
+  logger.info({
+    incidentId: firingIncident.id,
     displayId,
     duration: `${Math.round(incidentDuration / 1000)}s`
-  });
+  }, 'Incident resolved');
 
   return {
     ...eventResult,
@@ -179,7 +186,8 @@ async function createNewIncident(
   client: PoolClient,
   alert: ProcessedAlert,
   fingerprint: string,
-  displayId: string
+  displayId: string,
+  logger: Logger
 ): Promise<IncidentProcessingResult> {
   
   // Create the incident record
@@ -219,10 +227,11 @@ async function createNewIncident(
     'fired',
     alert,
     displayId,
-    'incident_created'
+    'incident_created',
+    logger
   );
 
-  console.log(`Created new incident ${incidentId}`, { displayId });
+  logger.info({ incidentId, displayId }, 'Created new incident');
 
   return {
     ...eventResult,
@@ -237,7 +246,8 @@ async function createResolvedIncident(
   client: PoolClient,
   alert: ProcessedAlert,
   fingerprint: string,
-  displayId: string
+  displayId: string,
+  logger: Logger
 ): Promise<IncidentProcessingResult> {
   
   // Estimate incident start time (assume it started 1 minute before resolve)
@@ -282,10 +292,11 @@ async function createResolvedIncident(
     'resolved',
     alert,
     displayId,
-    'incident_created'
+    'incident_created',
+    logger
   );
 
-  console.log(`Created resolved incident ${incidentId} (orphaned resolve)`, { displayId });
+  logger.info({ incidentId, displayId }, 'Created resolved incident (orphaned resolve)');
 
   return {
     ...eventResult,
@@ -303,7 +314,8 @@ async function addIncidentEvent(
   eventType: 'fired' | 'resolved' | 'updated',
   alert: ProcessedAlert,
   displayId: string,
-  action: IncidentProcessingResult['action']
+  action: IncidentProcessingResult['action'],
+  logger: Logger
 ): Promise<IncidentProcessingResult> {
   
   // Prepare event data
@@ -328,7 +340,7 @@ async function addIncidentEvent(
 
   const eventId = eventResult.rows[0].id;
 
-  console.log(`Added ${eventType} event ${eventId} to incident ${incidentId}`, { displayId });
+  logger.info({ eventType, eventId, incidentId, displayId }, 'Added incident event');
 
   return {
     incidentId,

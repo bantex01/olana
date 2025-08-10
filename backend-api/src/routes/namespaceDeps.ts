@@ -39,7 +39,7 @@ export function createNamespaceDepsRoutes(pool: Pool): Router {
             });
             
         } catch (error) {
-            console.error('Namespace dependency error:', error);
+            req.log.error({ error }, 'Namespace dependency creation failed');
             res.status(500).json({ error: "Failed to create namespace dependency" });
         } finally {
             client.release();
@@ -59,7 +59,7 @@ export function createNamespaceDepsRoutes(pool: Pool): Router {
             res.json(result.rows);
             
         } catch (error) {
-            console.error('Namespace dependencies fetch error:', error);
+            req.log.error({ error }, 'Namespace dependencies fetch failed');
             res.status(500).json({ error: "Failed to fetch namespace dependencies" });
         } finally {
             client.release();
@@ -81,14 +81,14 @@ export function createNamespaceDepsRoutes(pool: Pool): Router {
             return res.status(404).json({ error: "Namespace dependency not found" });
             }
             
-            res.json({ 
+            return res.json({ 
             status: "ok", 
             deleted: result.rows[0]
             });
             
         } catch (error) {
-            console.error('Delete namespace dependency error:', error);
-            res.status(500).json({ error: "Failed to delete namespace dependency" });
+            req.log.error({ error }, 'Namespace dependency deletion failed');
+            return res.status(500).json({ error: "Failed to delete namespace dependency" });
         } finally {
             client.release();
         }

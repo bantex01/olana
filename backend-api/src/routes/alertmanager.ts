@@ -18,8 +18,7 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
         });
       }
 
-      console.log('=== ALERTMANAGER WEBHOOK RECEIVED ===');
-      console.log('Payload:', JSON.stringify(req.body, null, 2));
+      req.log.info({ payload: req.body }, 'Alertmanager webhook received');
 
       // Basic payload validation
       if (!req.body || !Array.isArray(req.body.alerts)) {
@@ -32,12 +31,13 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
       const { alerts } = webhook;
 
       // Parse the webhook payload with enhanced validation
-      const parsedAlerts = parseAlertmanagerWebhook(webhook, config.defaultNamespace);
+      const parsedAlerts = parseAlertmanagerWebhook(webhook, config.defaultNamespace, req.log);
 
-      console.log(`=== VALIDATION SUMMARY ===`);
-      console.log(`Total alerts received: ${alerts.length}`);
-      console.log(`Successfully parsed: ${parsedAlerts.length}`);
-      console.log(`Failed validation: ${alerts.length - parsedAlerts.length}`);
+      req.log.info({
+        totalReceived: alerts.length,
+        successfullyParsed: parsedAlerts.length,
+        failedValidation: alerts.length - parsedAlerts.length
+      }, 'Alert validation summary');
 
       if (parsedAlerts.length === 0) {
         return res.status(400).json({
@@ -48,9 +48,15 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
         });
       }
 
-      console.log(`Validated alerts ready for processing:`);
+      req.log.debug('Validated alerts ready for processing');
       parsedAlerts.forEach((alert: ParsedAlert) => {
-        console.log(`✓ ${alert.serviceNamespace}::${alert.serviceName} [${alert.severity}] ${alert.status} - ${alert.message.substring(0, 50)}...`);
+        req.log.debug({
+          serviceNamespace: alert.serviceNamespace,
+          serviceName: alert.serviceName,
+          severity: alert.severity,
+          status: alert.status,
+          messagePreview: alert.message.substring(0, 50)
+        }, 'Validated alert ready for processing');
       });
 
       const client = await pool.connect();
@@ -73,36 +79,48 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
             );
             const alertLabels = originalAlert?.labels || {};
 
-            const serviceResult = await ensureServiceExists(client, alert, alertLabels);
+            const serviceResult = await ensureServiceExists(client, alert, alertLabels, req.log);
             if (serviceResult.created) {
               servicesCreated++;
-              console.log(`Service created from alert: ${alert.serviceNamespace}::${alert.serviceName}`, {
+              req.log.info({
+                serviceNamespace: alert.serviceNamespace,
+                serviceName: alert.serviceName,
                 tagChanges: serviceResult.tagChanges
-              });
+              }, 'Service created from alert');
             } else if (serviceResult.existed) {
               servicesUpdated++;
               if (serviceResult.tagChanges.length > 0) {
-                console.log(`Service tags updated from alert: ${alert.serviceNamespace}::${alert.serviceName}`, {
+                req.log.info({
+                  serviceNamespace: alert.serviceNamespace,
+                  serviceName: alert.serviceName,
                   tagChanges: serviceResult.tagChanges
-                });
+                }, 'Service tags updated from alert');
               }
             }
             
             // Step 2: Process the alert using NEW incident system
-            const alertResult = await processAlert(client, alert);
+            const alertResult = await processAlert(client, alert, req.log);
             alertResults.push(alertResult);
             
-            console.log(`Processed alert: ${alert.serviceNamespace}::${alert.serviceName} [${alert.severity}] ${alert.status} - ${alertResult.action} (Incident: ${alertResult.incidentId}, Event: ${alertResult.eventId})`);
+            req.log.info({
+              serviceNamespace: alert.serviceNamespace,
+              serviceName: alert.serviceName,
+              severity: alert.severity,
+              status: alert.status,
+              action: alertResult.action,
+              incidentId: alertResult.incidentId,
+              eventId: alertResult.eventId
+            }, 'Alert processed successfully');
             
           } catch (error) {
             processingErrors++;
-            console.error('Alert processing failed for individual alert:', {
+            req.log.error({
               service: `${alert.serviceNamespace}::${alert.serviceName}`,
               severity: alert.severity,
               status: alert.status,
               message: alert.message.substring(0, 100),
               error: error instanceof Error ? error.message : 'Unknown error'
-            });
+            }, 'Alert processing failed for individual alert');
             
             // Add a failed result to track the issue but don't break the transaction
             alertResults.push({
@@ -116,24 +134,23 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
         
         const alertSummary = summarizeAlertProcessing(alertResults);
         
-        console.log(`=== PROCESSING SUMMARY ===`);
-        console.log(`Services auto-created: ${servicesCreated}`);
-        console.log(`Existing services updated: ${servicesUpdated}`);
-        console.log(`Incidents created: ${alertSummary.created}`);
-        console.log(`Incidents updated: ${alertSummary.updated}`);
-        console.log(`Incidents resolved: ${alertSummary.resolved}`);
-        console.log(`Incidents reactivated: ${alertSummary.reactivated}`);
-        console.log(`Total incidents affected: ${alertSummary.totalIncidents}`);
-        console.log(`Total events created: ${alertSummary.totalEvents}`);
-        if (processingErrors > 0) {
-          console.log(`Processing errors: ${processingErrors}`);
-        }
+        req.log.info({
+          servicesCreated,
+          servicesUpdated,
+          incidentsCreated: alertSummary.created,
+          incidentsUpdated: alertSummary.updated,
+          incidentsResolved: alertSummary.resolved,
+          incidentsReactivated: alertSummary.reactivated,
+          totalIncidents: alertSummary.totalIncidents,
+          totalEvents: alertSummary.totalEvents,
+          processingErrors
+        }, 'Alert processing summary');
         
         await client.query('COMMIT');
         
       } catch (error) {
         await client.query('ROLLBACK');
-        console.error('Alert processing failed:', error);
+        req.log.error({ error }, 'Alert processing failed');
         throw error;
       } finally {
         client.release();
@@ -164,11 +181,11 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
         (responseData as any).message += ` (${processingErrors} errors occurred - check logs)`;
       }
 
-      res.json(responseData);
+      return res.json(responseData);
 
     } catch (error) {
-      console.error('Alertmanager webhook error:', error);
-      res.status(500).json({ 
+      req.log.error({ error }, 'Alertmanager webhook error');
+      return res.status(500).json({ 
         error: "Failed to process Alertmanager webhook",
         details: error instanceof Error ? error.message : 'Unknown error'
       });

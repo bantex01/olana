@@ -26,6 +26,7 @@ import {
 import type { ServiceSummary, ServicesListResponse } from '../../types';
 import { ServiceExpandableCard } from './ServiceExpandableCard';
 import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -85,7 +86,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({ onServiceSelect 
       const data: ServicesListResponse = await response.json();
       setServicesData(data);
     } catch (err) {
-      console.error('Error fetching services:', err);
+      logger.error('Error fetching services:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);

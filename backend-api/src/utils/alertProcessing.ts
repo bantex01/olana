@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { ParsedAlert } from './alertmanager';
 import { processIncident, ProcessedAlert, IncidentProcessingResult } from './incidentProcessing';
+import { Logger } from './logger';
 
 export interface AlertProcessingResult {
   incidentId: number;
@@ -15,7 +16,8 @@ export interface AlertProcessingResult {
  */
 export async function processAlert(
   client: PoolClient,
-  alert: ParsedAlert
+  alert: ParsedAlert,
+  logger: Logger
 ): Promise<AlertProcessingResult> {
   try {
     // Convert ParsedAlert to ProcessedAlert format
@@ -37,13 +39,13 @@ export async function processAlert(
     };
 
     // Process using the incident system
-    const result = await processIncident(client, processedAlert);
+    const result = await processIncident(client, processedAlert, logger);
 
     // Map incident result to legacy alert result format
     return mapIncidentResultToAlertResult(result);
 
   } catch (error) {
-    console.error('Error processing alert:', error);
+    logger.error({ error }, 'Error processing alert');
     throw error;
   }
 }
@@ -61,7 +63,8 @@ export async function processManualAlert(
     message: string;
     alert_source?: string;
     external_alert_id?: string;
-  }
+  },
+  logger: Logger
 ): Promise<AlertProcessingResult> {
   try {
     const processedAlert: ProcessedAlert = {
@@ -80,11 +83,11 @@ export async function processManualAlert(
       }
     };
 
-    const result = await processIncident(client, processedAlert);
+    const result = await processIncident(client, processedAlert, logger);
     return mapIncidentResultToAlertResult(result);
 
   } catch (error) {
-    console.error('Error processing manual alert:', error);
+    logger.error({ error }, 'Error processing manual alert');
     throw error;
   }
 }
@@ -94,7 +97,8 @@ export async function processManualAlert(
  */
 export async function resolveManualAlert(
   client: PoolClient,
-  incidentId: number
+  incidentId: number,
+  logger: Logger
 ): Promise<AlertProcessingResult> {
   try {
     // Get the incident details
@@ -141,11 +145,11 @@ export async function resolveManualAlert(
       }
     };
 
-    const result = await processIncident(client, processedAlert);
+    const result = await processIncident(client, processedAlert, logger);
     return mapIncidentResultToAlertResult(result);
 
   } catch (error) {
-    console.error('Error resolving manual alert:', error);
+    logger.error({ error }, 'Error resolving manual alert');
     throw error;
   }
 }

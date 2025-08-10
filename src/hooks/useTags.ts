@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../utils/api';
+import { logger } from '../utils/logger';
 
 export const useTags = () => {
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -10,7 +11,7 @@ export const useTags = () => {
       const data = await response.json();
       setAvailableTags(data.tags || []);
     } catch (error) {
-      console.error('Failed to fetch tags:', error);
+      logger.error('Failed to fetch tags:', error);
     }
   };
 

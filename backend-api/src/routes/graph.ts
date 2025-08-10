@@ -17,8 +17,7 @@ export function createGraphRoutes(pool: Pool): Router {
     const client = await pool.connect();
     
     try {
-        console.log('=== GRAPH REQUEST ===');
-        console.log('Query params:', req.query);
+        req.log.debug({ queryParams: req.query }, 'Graph request received');
         
         // Parse query filters
         const filters: GraphFilters = {};
@@ -27,14 +26,13 @@ export function createGraphRoutes(pool: Pool): Router {
         if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
         
         const includeDependents = req.query.includeDependents === 'true';
-        console.log('Include dependents:', includeDependents);
+        req.log.debug({ includeDependents }, 'Processing dependency inclusion');
 
         // If namespace filtering is active and includeDependents is true, expand the namespace list
         let finalNamespaces = filters.namespaces || [];
         
         if (includeDependents && filters.namespaces && filters.namespaces.length > 0) {
-        console.log('Expanding namespaces with dependencies...');
-        console.log('Original namespaces:', filters.namespaces);
+        req.log.debug({ originalNamespaces: filters.namespaces }, 'Expanding namespaces with dependencies');
         
         // Get all namespace dependencies
         const namespaceDepsResult = await client.query(`
@@ -60,8 +58,10 @@ export function createGraphRoutes(pool: Pool): Router {
             reverseDependencyMap.get(row.to_namespace)!.add(row.from_namespace);
         });
         
-        console.log('Dependency map:', Object.fromEntries(dependencyMap));
-        console.log('Reverse dependency map:', Object.fromEntries(reverseDependencyMap));
+        req.log.debug({ 
+          dependencyMap: Object.fromEntries(dependencyMap),
+          reverseDependencyMap: Object.fromEntries(reverseDependencyMap)
+        }, 'Dependency maps built');
         
         // Expand namespaces by following dependencies
         const expandedNamespaces = new Set(filters.namespaces);
@@ -83,7 +83,7 @@ export function createGraphRoutes(pool: Pool): Router {
         });
         
         finalNamespaces = Array.from(expandedNamespaces);
-        console.log('Expanded namespaces:', finalNamespaces);
+        req.log.debug({ expandedNamespaces: finalNamespaces }, 'Namespaces expanded with dependencies');
         }
 
         // Start with all services, then filter
@@ -132,12 +132,11 @@ export function createGraphRoutes(pool: Pool): Router {
         
         servicesQuery += ` ORDER BY s.service_namespace, s.service_name`;
 
-        console.log('Services query:', servicesQuery);
-        console.log('Services params:', params);
+        req.log.debug({ query: servicesQuery, params }, 'Executing services query');
 
         // Execute services query
         const servicesResult = await client.query(servicesQuery, params);
-        console.log('Found services:', servicesResult.rows.length);
+        req.log.debug({ serviceCount: servicesResult.rows.length }, 'Services query executed');
 
         // Get dependencies using natural keys
         let dependenciesResult = { rows: [] };
@@ -200,8 +199,7 @@ export function createGraphRoutes(pool: Pool): Router {
         
         alertQuery += ` GROUP BY i.service_namespace, i.service_name, i.severity`;
         
-        console.log('Alert query (incident-based):', alertQuery);
-        console.log('Alert params:', alertParams);
+        req.log.debug({ query: alertQuery, params: alertParams }, 'Executing alerts query');
         
         alertsResult = await client.query(alertQuery, alertParams);
         }
@@ -275,7 +273,7 @@ export function createGraphRoutes(pool: Pool): Router {
                 JSON.parse(service.tag_sources) : 
                 service.tag_sources || {};
             } catch (e) {
-                console.warn('Failed to parse tag_sources for service', serviceNodeId);
+                req.log.warn({ serviceNodeId, error: e }, 'Failed to parse tag_sources for service');
             }
             
             nodes.push({
@@ -341,7 +339,7 @@ export function createGraphRoutes(pool: Pool): Router {
         }
         });
         
-        console.log(`Returning ${nodes.length} nodes, ${edges.length} edges`);
+        req.log.info({ nodeCount: nodes.length, edgeCount: edges.length }, 'Returning graph data');
         res.json({ 
         nodes, 
         edges, 
@@ -350,7 +348,7 @@ export function createGraphRoutes(pool: Pool): Router {
         });
         
     } catch (error) {
-        console.error('Graph error:', error);
+        req.log.error({ error }, 'Graph generation failed');
         res.status(500).json({ error: "Failed to generate graph" });
     } finally {
         client.release();
