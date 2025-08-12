@@ -1,12 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Card, Typography, Space, Button, Switch, Slider, Select, Divider, Tag, Tooltip } from 'antd';
-import { ForkOutlined, ExpandOutlined, CompressOutlined, FilterOutlined, SettingOutlined, AimOutlined } from '@ant-design/icons';
+import { Card, Typography, Space, Button, Switch, Slider, Select, Tag, Tooltip } from 'antd';
+import { ForkOutlined, ExpandOutlined, CompressOutlined, FilterOutlined, AimOutlined } from '@ant-design/icons';
 import { Network, DataSet } from "vis-network/standalone/esm/vis-network";
 import type { ServiceDetailResponse, Node, Edge } from '../../types';
-import { API_BASE_URL } from '../../utils/api';
 import { logger } from '../../utils/logger';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 
 interface ServiceDependencyMapProps {
@@ -83,7 +82,7 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
 
     // Add upstream dependencies (services this service depends on)
     if (showUpstream && maxDepth >= 1) {
-      dependencies.outgoing.forEach((dep, index) => {
+      dependencies.outgoing.forEach((dep, _index) => {
         const depId = `${dep.namespace}::${dep.name}`;
         if (!processedServices.has(depId)) {
           const upstreamNode: DependencyNode = {
@@ -133,7 +132,7 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
 
     // Add downstream dependencies (services that depend on this service)
     if (showDownstream && maxDepth >= 1) {
-      dependencies.incoming.forEach((dep, index) => {
+      dependencies.incoming.forEach((dep, _index) => {
         const depId = `${dep.namespace}::${dep.name}`;
         if (!processedServices.has(depId)) {
           const downstreamNode: DependencyNode = {

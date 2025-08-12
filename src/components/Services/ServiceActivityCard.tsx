@@ -10,7 +10,7 @@ interface ServiceActivityCardProps {
 }
 
 export const ServiceActivityCard: React.FC<ServiceActivityCardProps> = ({ serviceData }) => {
-  const { service, metrics } = serviceData;
+  const { service, metrics: _metrics } = serviceData;
   
   // Calculate service age in days
   const calculateServiceAge = () => {
@@ -89,7 +89,6 @@ export const ServiceActivityCard: React.FC<ServiceActivityCardProps> = ({ servic
     const items = [];
     const serviceAge = calculateServiceAge();
     const hoursSinceLastSeen = calculateHoursSinceLastSeen();
-    const recentChanges = calculateRecentChanges();
 
     // Service creation
     items.push({
@@ -239,7 +238,6 @@ export const ServiceActivityCard: React.FC<ServiceActivityCardProps> = ({ servic
             Recent Timeline:
           </Text>
           <Timeline 
-            size="small"
             items={timelineItems}
             style={{ marginLeft: '8px' }}
           />

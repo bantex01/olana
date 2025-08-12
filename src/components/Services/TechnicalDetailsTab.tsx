@@ -7,9 +7,6 @@ import {
   SettingOutlined,
   InfoCircleOutlined,
   LinkOutlined,
-  TeamOutlined,
-  EnvironmentOutlined,
-  ClockCircleOutlined,
   ThunderboltOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons';
@@ -236,7 +233,7 @@ export const TechnicalDetailsTab: React.FC<TechnicalDetailsTabProps> = ({ servic
             <Space>
               <InfoCircleOutlined />
               <span>Metadata</span>
-              <Tag size="small" color="blue">{tagsData.length}</Tag>
+              <Tag color="blue">{tagsData.length}</Tag>
             </Space>
           }
           key="metadata"
@@ -345,7 +342,7 @@ export const TechnicalDetailsTab: React.FC<TechnicalDetailsTabProps> = ({ servic
             <Space>
               <LinkOutlined />
               <span>Dependencies</span>
-              <Tag size="small" color="blue">{dependencies.incoming.length + dependencies.outgoing.length}</Tag>
+              <Tag color="blue">{dependencies.incoming.length + dependencies.outgoing.length}</Tag>
             </Space>
           }
           key="dependencies"
@@ -415,7 +412,7 @@ export const TechnicalDetailsTab: React.FC<TechnicalDetailsTabProps> = ({ servic
             <Space>
               <ApiOutlined />
               <span>Communication</span>
-              <Tag size="small" color="blue">
+              <Tag color="blue">
                 {externalCallsData.length + databaseCallsData.length + rpcCallsData.length}
               </Tag>
             </Space>

@@ -3,7 +3,6 @@ import { Card, Typography, Spin, Alert, Button, Space } from 'antd';
 import { DownOutlined, UpOutlined, EyeOutlined, MinusOutlined } from '@ant-design/icons';
 import type { ServiceSummary, ServiceDetailResponse } from '../../types';
 import { ServiceSummaryCard } from './ServiceSummaryCard';
-import { ServiceDetailPage } from './ServiceDetailPage';
 import { API_BASE_URL } from '../../utils/api';
 import { logger } from '../../utils/logger';
 
@@ -186,11 +185,7 @@ export const ServiceExpandableCard: React.FC<ServiceExpandableCardProps> = ({
               </div>
 
               {/* Render the full ServiceDetailPage content inline */}
-              <div style={{ 
-                // Remove the padding and background from the embedded detail page
-                '& .ant-card': { marginBottom: '16px' },
-                '& .ant-card-body': { padding: '16px' }
-              }}>
+              <div>
                 <ServiceDetailInlineContent serviceData={serviceDetail} />
               </div>
             </div>

@@ -1,24 +1,21 @@
 import React, { useMemo } from 'react';
-import { Card, Typography, Space, Progress, Row, Col, Tag, Tooltip, Avatar, Statistic, Divider } from 'antd';
+import { Card, Typography, Space, Progress, Row, Col, Tag, Avatar, Statistic, Divider } from 'antd';
 import { 
   TeamOutlined, 
-  EnvironmentOutlined, 
   TrophyOutlined,
   SafetyOutlined,
-  ClockCircleOutlined,
   AlertOutlined,
   CheckCircleOutlined,
   InfoCircleOutlined,
   StarOutlined,
   GlobalOutlined,
-  SettingOutlined,
   ExclamationCircleOutlined,
   CrownOutlined,
   FireOutlined
 } from '@ant-design/icons';
 import type { ServiceDetailResponse } from '../../types';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface ServiceMetadataCardProps {
   serviceData: ServiceDetailResponse;

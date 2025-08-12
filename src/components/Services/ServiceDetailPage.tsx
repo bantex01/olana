@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Typography, Spin, Alert, Breadcrumb, Button, Tag, Space, Avatar, Row, Col, Statistic } from 'antd';
-import { ArrowLeftOutlined, HomeOutlined, DatabaseOutlined, ClockCircleOutlined, TeamOutlined, SettingOutlined, EnvironmentOutlined, AlertOutlined, LinkOutlined, ApiOutlined } from '@ant-design/icons';
+import { Card, Typography, Spin, Alert, Breadcrumb, Button, Tag, Space, Avatar, Row, Col } from 'antd';
+import { ArrowLeftOutlined, HomeOutlined, DatabaseOutlined, ClockCircleOutlined, TeamOutlined, SettingOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import type { ServiceDetailResponse } from '../../types';
 import { API_BASE_URL } from '../../utils/api';
 import { logger } from '../../utils/logger';

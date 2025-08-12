@@ -3,22 +3,16 @@ import { Card, Typography, Space, Row, Col, Tag, Progress, Tooltip, Empty, Divid
 import { 
   SettingOutlined, 
   FlagOutlined,
-  EnvironmentOutlined,
   DatabaseOutlined,
   SecurityScanOutlined,
   ThunderboltOutlined,
-  CheckCircleOutlined,
   ExclamationCircleOutlined,
-  WarningOutlined,
-  InfoCircleOutlined,
-  ApiOutlined,
   GlobalOutlined,
-  ClockCircleOutlined,
   BugOutlined
 } from '@ant-design/icons';
 import type { ServiceDetailResponse } from '../../types';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface ServiceConfigurationCardProps {
   serviceData: ServiceDetailResponse;

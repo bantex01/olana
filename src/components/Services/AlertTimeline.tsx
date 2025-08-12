@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Typography, Space, Button, Select, Tag, Tooltip, Row, Col, Progress } from 'antd';
-import { ClockCircleOutlined, AlertOutlined, CheckCircleOutlined, ExclamationCircleOutlined, CalendarOutlined, BarChartOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined, CalendarOutlined, BarChartOutlined } from '@ant-design/icons';
 import type { ServiceDetailResponse, ServiceAlertHistory } from '../../types';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 
 interface AlertTimelineProps {
@@ -20,7 +20,6 @@ export const AlertTimeline: React.FC<AlertTimelineProps> = ({ serviceData }) => 
   const filteredHistory = useMemo(() => {
     const now = new Date();
     const cutoffDays = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
-    const cutoffDate = new Date(now.getTime() - (cutoffDays * 24 * 60 * 60 * 1000));
     
     // Create a complete date range with placeholder entries
     const dateRange: ServiceAlertHistory[] = [];
@@ -177,7 +176,7 @@ export const AlertTimeline: React.FC<AlertTimelineProps> = ({ serviceData }) => 
         overflowX: 'auto',
         paddingBottom: '16px'
       }}>
-        {filteredHistory.map((entry, index) => {
+        {filteredHistory.map((entry, _index) => {
           const dayStatus = getDayStatus(entry);
           const date = new Date(entry.date);
           const isToday = date.toDateString() === new Date().toDateString();
@@ -272,10 +271,9 @@ export const AlertTimeline: React.FC<AlertTimelineProps> = ({ serviceData }) => 
           overflowX: 'auto',
           paddingBottom: '20px'
         }}>
-          {filteredHistory.map((entry, index) => {
+          {filteredHistory.map((entry, _index) => {
             const alertCount = parseInt(String(entry.alert_count)) || 0;
             const totalHeight = alertCount === 0 ? 4 : Math.max((alertCount / maxCount) * 180, 8);
-            const dayStatus = getDayStatus(entry);
             
             // Calculate stacked segments based on actual data
             const segments = [];

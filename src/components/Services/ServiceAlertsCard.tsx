@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
-import { Card, Typography, Space, Tag, Empty, Badge, Row, Col, Divider } from 'antd';
+import { Card, Typography, Space, Tag, Empty, Row, Col, Divider } from 'antd';
 import { AlertOutlined, CheckCircleOutlined, ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons';
-import type { ServiceDetailResponse, Alert } from '../../types';
+import type { ServiceDetailResponse } from '../../types';
 import { AlertItem } from '../Alerts/AlertItem';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface ServiceAlertsCardProps {
   serviceData: ServiceDetailResponse;
