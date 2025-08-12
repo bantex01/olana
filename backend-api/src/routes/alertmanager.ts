@@ -62,7 +62,7 @@ export function createAlertmanagerRoutes(pool: Pool, config: AlertmanagerConfig)
       const client = await pool.connect();
       let servicesCreated = 0;
       let servicesUpdated = 0;
-      const alertResults = [];
+      const alertResults: any[] = [];
       let processingErrors = 0;
       
       try {
