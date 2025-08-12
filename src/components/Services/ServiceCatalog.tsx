@@ -17,7 +17,6 @@ import {
 } from 'antd';
 import { 
   SearchOutlined, 
-  FilterOutlined, 
   ClearOutlined, 
   ReloadOutlined,
   SelectOutlined,
@@ -42,7 +41,7 @@ interface ServiceCatalogFilters {
   team: string | undefined;
 }
 
-export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({ onServiceSelect }) => {
+export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({ onServiceSelect: _onServiceSelect }) => {
   // State for services data
   const [servicesData, setServicesData] = useState<ServicesListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -443,7 +442,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({ onServiceSelect 
                             </div>
                             
                             {selectedServices.has(getServiceKey(service)) && (
-                              <Tag color="blue" size="small">
+                              <Tag color="blue">
                                 <SelectOutlined /> Selected
                               </Tag>
                             )}
@@ -451,13 +450,13 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({ onServiceSelect 
                           
                           <Space size="small" wrap>
                             {service.environment && (
-                              <Tag size="small">{service.environment}</Tag>
+                              <Tag>{service.environment}</Tag>
                             )}
                             {service.team && (
-                              <Tag size="small">{service.team}</Tag>
+                              <Tag>{service.team}</Tag>
                             )}
                             {service.current_alert_count > 0 && (
-                              <Tag color="red" size="small">
+                              <Tag color="red">
                                 {service.current_alert_count} alerts
                               </Tag>
                             )}

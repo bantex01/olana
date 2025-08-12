@@ -1,5 +1,5 @@
 import React from 'react';
-import { Divider, Space, Tag } from 'antd';
+import { Space, Tag } from 'antd';
 import { AlertOutlined } from '@ant-design/icons';
 import { AlertRow } from './AlertRow';
 import type { ServiceGroup } from '../../types';

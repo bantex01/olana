@@ -1,12 +1,9 @@
 import React, { useMemo } from 'react';
-import { Card, Typography, Space, Timeline, Tag, Empty, Divider, Tooltip, Button } from 'antd';
+import { Card, Typography, Space, Timeline, Tag, Empty, Divider, Button } from 'antd';
 import { 
   ClockCircleOutlined, 
-  AlertOutlined, 
   CheckCircleOutlined, 
   DatabaseOutlined,
-  ApiOutlined,
-  TeamOutlined,
   SettingOutlined,
   ReloadOutlined,
   ExclamationCircleOutlined,
@@ -14,9 +11,9 @@ import {
   WarningOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons';
-import type { ServiceDetailResponse, Alert } from '../../types';
+import type { ServiceDetailResponse } from '../../types';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface ServiceActivityFeedProps {
   serviceData: ServiceDetailResponse;
@@ -28,7 +25,7 @@ interface ActivityEvent {
   type: 'alert_fired' | 'alert_resolved' | 'service_discovered' | 'dependency_change' | 'configuration_update';
   title: string;
   description: string;
-  severity?: 'fatal' | 'critical' | 'warning' | 'info';
+  severity?: 'fatal' | 'critical' | 'warning' | 'info' | 'none';
   metadata?: Record<string, any>;
 }
 
@@ -316,7 +313,7 @@ export const ServiceActivityFeed: React.FC<ServiceActivityFeedProps> = ({ servic
                   })}
                 </Text>
                 
-                <Timeline size="small">
+                <Timeline>
                   {events.map(event => {
                     const style = getEventStyle(event);
                     
@@ -351,27 +348,27 @@ export const ServiceActivityFeed: React.FC<ServiceActivityFeedProps> = ({ servic
                           {event.metadata && (
                             <Space size={4} wrap>
                               {event.metadata.instance_id && (
-                                <Tag size="small" color="default">
+                                <Tag color="default">
                                   {event.metadata.instance_id}
                                 </Tag>
                               )}
                               {event.metadata.count && event.metadata.count > 1 && (
-                                <Tag size="small" color="blue">
+                                <Tag color="blue">
                                   ×{event.metadata.count}
                                 </Tag>
                               )}
                               {event.metadata.source && (
-                                <Tag size="small" color="purple">
+                                <Tag color="purple">
                                   {event.metadata.source}
                                 </Tag>
                               )}
                               {event.metadata.duration_minutes && (
-                                <Tag size="small" color="green">
+                                <Tag color="green">
                                   {event.metadata.duration_minutes}m
                                 </Tag>
                               )}
                               {event.metadata.direction && (
-                                <Tag size="small" color="orange">
+                                <Tag color="orange">
                                   {event.metadata.direction}
                                 </Tag>
                               )}

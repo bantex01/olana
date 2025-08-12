@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Typography, Table, Tag, Alert as AntAlert, Spin, Space, Button } from 'antd';
-import { AlertOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Typography, Alert as AntAlert, Spin, Space, Button } from 'antd';
 import { useIncidents } from '../../hooks/useIncidents';
-import type { Alert, ServiceGroup } from '../../types';
 import { logger } from '../../utils/logger';
 import { AlertsFilters } from './AlertsFilters';
 import { ServiceRow } from './ServiceRow';
@@ -38,7 +36,6 @@ export const IncidentsPage: React.FC = () => {
 
 // Capture scroll position before auto-refresh
 const captureScrollPosition = () => {
-  const scrollElement = pageContainerRef.current || document.documentElement;
   const scrollTop = pageContainerRef.current ? 
     pageContainerRef.current.scrollTop : 
     (window.pageYOffset || document.documentElement.scrollTop);
@@ -155,82 +152,7 @@ const handleClearAll = () => {
 };
 
   // Get severity color and props
-  const getSeverityProps = (severity: string) => {
-    switch (severity.toLowerCase()) {
-      case 'fatal':
-        return { color: 'black' };
-      case 'critical':
-        return { color: 'red' };
-      case 'warning':
-        return { color: 'orange' };
-      default:
-        return { color: 'blue' };
-    }
-  };
 
-  // Table columns configuration
-  const serviceColumns = [
-    {
-      title: 'Service',
-      key: 'service',
-      render: (record: ServiceGroup) => (
-        <div>
-          <strong>{record.serviceKey}</strong>
-        </div>
-      ),
-    },
-    {
-      title: 'Highest Severity',
-      key: 'severity',
-      render: (record: ServiceGroup) => {
-        const { color } = getSeverityProps(record.highestSeverity);
-        return (
-          <Tag color={color} icon={<AlertOutlined />}>
-            {record.highestSeverity.toUpperCase()}
-          </Tag>
-        );
-      },
-    },
-    {
-      title: 'Alert Count',
-      dataIndex: 'alertCount',
-      key: 'alertCount',
-      render: (count: number) => (
-        <Tag color="blue">{count}</Tag>
-      ),
-    },
-    {
-      title: 'Longest Duration',
-      key: 'duration',
-      render: (record: ServiceGroup) => {
-        if (record.longestDuration === 0) {
-          return <span style={{ color: '#999' }}>Unknown</span>;
-        }
-        const duration = Math.floor(record.longestDuration / 1000 / 60);
-        return (
-          <span>
-            <ClockCircleOutlined style={{ marginRight: 4 }} />
-            {duration < 60 ? `${duration}m` : `${Math.floor(duration / 60)}h ${duration % 60}m`}
-          </span>
-        );
-      },
-    },
-    {
-      title: 'Latest Activity',
-      key: 'latestActivity',
-      render: (record: ServiceGroup) => {
-        if (!record.latestActivity) {
-          return <span style={{ color: '#999' }}>Unknown</span>;
-        }
-        const timeAgo = Math.floor((Date.now() - new Date(record.latestActivity).getTime()) / 1000 / 60);
-        return (
-          <span>
-            {timeAgo < 60 ? `${timeAgo}m ago` : `${Math.floor(timeAgo / 60)}h ago`}
-          </span>
-        );
-      },
-    },
-  ];
 
 
   if (error) {

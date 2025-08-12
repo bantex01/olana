@@ -106,20 +106,20 @@ export const ServiceSummaryCard: React.FC<ServiceSummaryCardProps> = ({
               {service.environment && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <EnvironmentOutlined style={{ color: '#1890ff', fontSize: '12px' }} />
-                  <Tag color="blue" size="small">{service.environment}</Tag>
+                  <Tag color="blue">{service.environment}</Tag>
                 </div>
               )}
               
               {service.team && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <TeamOutlined style={{ color: '#52c41a', fontSize: '12px' }} />
-                  <Tag color="green" size="small">{service.team}</Tag>
+                  <Tag color="green">{service.team}</Tag>
                 </div>
               )}
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <ClockCircleOutlined style={{ color: activityStatus.color, fontSize: '12px' }} />
-                <Tag color={activityStatus.color} size="small">{activityStatus.status}</Tag>
+                <Tag color={activityStatus.color}>{activityStatus.status}</Tag>
               </div>
             </div>
           </Space>
@@ -169,13 +169,13 @@ export const ServiceSummaryCard: React.FC<ServiceSummaryCardProps> = ({
           {Object.keys(service.tags).length > 0 && (
             <div style={{ marginTop: '8px' }}>
               <Space size={4} wrap>
-                {Object.entries(service.tags).slice(0, 3).map(([key, value]) => (
-                  <Tag key={key} size="small" style={{ fontSize: '10px' }}>
+                {Object.entries(service.tags).slice(0, 3).map(([key, _value]) => (
+                  <Tag key={key} style={{ fontSize: '10px' }}>
                     {key}
                   </Tag>
                 ))}
                 {Object.keys(service.tags).length > 3 && (
-                  <Tag size="small" style={{ fontSize: '10px' }}>
+                  <Tag style={{ fontSize: '10px' }}>
                     +{Object.keys(service.tags).length - 3} more
                   </Tag>
                 )}

@@ -21,13 +21,18 @@ export const ServiceHealthCard: React.FC<ServiceHealthCardProps> = ({ serviceDat
       return serviceAge;
     }
 
-    const mostRecentAlert = alerts.history[0];
-    if (!mostRecentAlert || !mostRecentAlert.resolved_at) {
-      return 0; // Currently has active alerts
+    // Find the most recent resolved alert from current alerts
+    const resolvedAlerts = alerts.current.filter(alert => alert.resolved_at);
+    if (resolvedAlerts.length === 0) {
+      return 0; // No resolved alerts or currently has active alerts
     }
 
+    const mostRecentResolvedAlert = resolvedAlerts.sort((a, b) => 
+      new Date(b.resolved_at!).getTime() - new Date(a.resolved_at!).getTime()
+    )[0];
+
     return Math.floor(
-      (new Date().getTime() - new Date(mostRecentAlert.resolved_at).getTime()) / (1000 * 60 * 60 * 24)
+      (new Date().getTime() - new Date(mostRecentResolvedAlert.resolved_at!).getTime()) / (1000 * 60 * 60 * 24)
     );
   };
 

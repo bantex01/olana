@@ -10,7 +10,7 @@ interface ServiceConnectivityCardProps {
 }
 
 export const ServiceConnectivityCard: React.FC<ServiceConnectivityCardProps> = ({ serviceData }) => {
-  const { dependencies, metrics } = serviceData;
+  const { dependencies: _dependencies, metrics } = serviceData;
   
   const incomingCount = metrics.incoming_dependency_count || 0;
   const outgoingCount = metrics.outgoing_dependency_count || 0;

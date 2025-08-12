@@ -17,7 +17,6 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
   currentFilters,
   fetchGraphData,
   fetchAlerts,
-  buildFilterQuery,
   includeDependentNamespaces,
 }) => {
   const graphRef = useRef<HTMLDivElement>(null);
@@ -228,7 +227,7 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
         };
 
         logger.debug('Creating new Network...');
-        const network = new Network(graphRef.current, data, options);
+        new Network(graphRef.current, data, options);
         logger.debug('Network created successfully');
       } else {
         logger.error('ERROR: graphRef.current is null - cannot render graph');

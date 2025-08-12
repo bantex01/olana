@@ -16,15 +16,6 @@ import { ServicesPage } from './components/Services/ServicesPage';
 import { ServiceDetailPage } from './components/Services/ServiceDetailPage';
 
 
-const siderResponsiveStyle = `
-  @media (max-width: 768px) {
-    .ant-layout-sider-collapsed {
-      margin-left: -240px !important;
-    }
-  }
-`;
-
-
 const { Header, Content, Sider } = Layout;
 const { Title } = Typography;
 
@@ -84,7 +75,7 @@ const App: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedKey, setSelectedKey] = useState('home');
   const [serviceDetailParams, setServiceDetailParams] = useState<{namespace: string, name: string} | null>(null);
-  const [dashboardLastUpdated, setDashboardLastUpdated] = useState<Date | null>(null);
+  const [, setDashboardLastUpdated] = useState<Date | null>(null);
   
   const {
     token: { colorBgContainer, borderRadiusLG },

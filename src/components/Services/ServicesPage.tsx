@@ -1,9 +1,6 @@
 import React from 'react';
-import { Card, Typography } from 'antd';
 import { ServicesOverview } from './ServicesOverview';
 import { ServiceCatalog } from './ServiceCatalog';
-
-const { Title } = Typography;
 
   interface ServicesPageProps {
     activeTab: string;

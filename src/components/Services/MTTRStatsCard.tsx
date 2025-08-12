@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
-import { Card, Typography, Space, Statistic, Progress, Row, Col, Tag, Tooltip, Divider } from 'antd';
+import { Card, Typography, Space, Statistic, Progress, Row, Col, Tag, Divider } from 'antd';
 import { ClockCircleOutlined, ThunderboltOutlined, CheckCircleOutlined, ExclamationCircleOutlined, TrophyOutlined, AlertOutlined } from '@ant-design/icons';
-import type { ServiceDetailResponse, Alert } from '../../types';
+import type { ServiceDetailResponse } from '../../types';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface MTTRStatsCardProps {
   serviceData: ServiceDetailResponse;
@@ -278,7 +278,7 @@ export const MTTRStatsCard: React.FC<MTTRStatsCardProps> = ({ serviceData }) => 
                     <Text style={{ fontSize: '12px', textTransform: 'capitalize' }}>
                       {severity === 'none' ? 'Info' : severity}
                     </Text>
-                    <Tag size="small" color={severityColors[severity as keyof typeof severityColors]}>
+                    <Tag color={severityColors[severity as keyof typeof severityColors]}>
                       {data.count}
                     </Tag>
                   </Space>
