@@ -352,7 +352,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       const timeline = timelineResult.rows.map((row: any) => {
         const durationSeconds = parseFloat(row.duration_seconds);
         const nextIncidentStart = row.next_incident_start;
-        let timeToNext = null;
+        let timeToNext: number | null = null;
         
         if (nextIncidentStart && row.incident_end) {
           timeToNext = Math.round(
