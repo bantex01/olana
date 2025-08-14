@@ -61,10 +61,16 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
     const centralNode: DependencyNode = {
       id: centralServiceId,
       label: service.name,
-      color: '#1890ff',
+      color: getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim() || '#1890ff',
       shape: 'dot',
       size: 30,
-      font: { size: 14, color: '#000', background: 'rgba(255,255,255,0.8)', strokeWidth: 2, strokeColor: '#fff' },
+      font: { 
+        size: 14, 
+        color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
+        background: 'rgba(0, 0, 0, 0.7)',
+        strokeWidth: 2, 
+        strokeColor: getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim() || '#1890ff'
+      },
       isCenter: true,
       direction: 'center',
       distance: 0,
@@ -91,7 +97,13 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
             color: '#52c41a',
             shape: 'dot',
             size: focusMode ? 20 : 25,
-            font: { size: focusMode ? 11 : 12, color: '#000', background: 'rgba(255,255,255,0.8)', strokeWidth: 1, strokeColor: '#fff' },
+            font: { 
+              size: focusMode ? 11 : 12, 
+              color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
+              background: 'rgba(0, 0, 0, 0.7)',
+              strokeWidth: 1, 
+              strokeColor: '#52c41a'
+            },
             isCenter: false,
             direction: 'upstream',
             distance: 1,
@@ -141,7 +153,13 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
             color: '#faad14',
             shape: 'dot',
             size: focusMode ? 20 : 25,
-            font: { size: focusMode ? 11 : 12, color: '#000', background: 'rgba(255,255,255,0.8)', strokeWidth: 1, strokeColor: '#fff' },
+            font: { 
+              size: focusMode ? 11 : 12, 
+              color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#ffffff',
+              background: 'rgba(0, 0, 0, 0.7)',
+              strokeWidth: 1, 
+              strokeColor: '#faad14'
+            },
             isCenter: false,
             direction: 'downstream',
             distance: 1,
@@ -202,16 +220,23 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
           borderWidthSelected: 3,
           shadow: {
             enabled: true,
-            color: 'rgba(0,0,0,0.2)',
+            color: getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim().includes('#00d4aa') 
+              ? 'rgba(0, 212, 170, 0.3)' 
+              : 'rgba(0, 0, 0, 0.2)',
             size: 8,
             x: 2,
             y: 2
           }
         },
         edges: {
+          color: {
+            color: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#d9d9d9',
+            highlight: getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim() || '#1890ff',
+            hover: getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim() || '#1890ff'
+          },
           shadow: {
             enabled: true,
-            color: 'rgba(0,0,0,0.1)',
+            color: 'rgba(0, 0, 0, 0.2)',
             size: 3,
             x: 1,
             y: 1
@@ -369,9 +394,9 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
         {/* Interactive Controls */}
         <div style={{ 
           padding: '12px', 
-          backgroundColor: '#fafafa', 
+          backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-tertiary').trim() || '#f0f0f0',
           borderRadius: '6px',
-          border: '1px solid #f0f0f0'
+          border: `1px solid ${getComputedStyle(document.documentElement).getPropertyValue('--border-secondary').trim() || '#f0f0f0'}`
         }}>
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             {/* Direction Controls */}
@@ -468,7 +493,7 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
             height: focusMode ? '320px' : '400px', 
             border: "1px solid #d9d9d9", 
             borderRadius: '6px',
-            backgroundColor: '#fafafa',
+            backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary').trim() || '#fafafa',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
@@ -498,7 +523,7 @@ export const ServiceDependencyMap: React.FC<ServiceDependencyMapProps> = ({ serv
               height: focusMode ? '320px' : '400px', 
               border: "1px solid #d9d9d9", 
               borderRadius: '6px',
-              backgroundColor: '#fafafa'
+              backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-secondary').trim() || '#fafafa'
             }}
           />
         )}

@@ -14,6 +14,7 @@ import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
 import { ServicesPage } from './components/Services/ServicesPage';
 import { ServiceDetailPage } from './components/Services/ServiceDetailPage';
+import { ThemeToggle } from './components/Common/ThemeToggle';
 
 
 const { Header, Content, Sider } = Layout;
@@ -235,13 +236,22 @@ const App: React.FC = () => {
             {getPageTitle(selectedKey)}
         </Title>
         </div>
-            <div style={{ color: '#666', alignSelf: 'flex-start', paddingTop: 8 }}>
-            {new Date().toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            })}
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 16,
+              alignSelf: 'flex-start', 
+              paddingTop: 8 
+            }}>
+              <div style={{ color: '#666' }}>
+                {new Date().toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                })}
+              </div>
+              <ThemeToggle />
             </div>
         </Header>
 
