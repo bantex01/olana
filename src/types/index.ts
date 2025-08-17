@@ -50,6 +50,7 @@ export type GraphFilters = {
   teams?: string[];
   severities?: string[];
   environments?: string[];
+  search?: string;
 };
 
 export type ServiceGroup = {

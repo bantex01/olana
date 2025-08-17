@@ -28,11 +28,11 @@ interface DashboardData {
   error: string | null;
 }
 
-interface DashboardHomeProps {
+interface DashboardClassicProps {
   onLastUpdatedChange: (date: Date) => void;
 }
 
-export const DashboardHome: React.FC<DashboardHomeProps> = ({ onLastUpdatedChange }) => {
+export const DashboardClassic: React.FC<DashboardClassicProps> = ({ onLastUpdatedChange }) => {
   const [data, setData] = useState<DashboardData>({
     activeAlerts: [],
     systemHealth: {

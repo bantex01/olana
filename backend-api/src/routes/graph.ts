@@ -7,6 +7,7 @@ type GraphFilters = {
   teams?: string[];
   severities?: string[];
   environments?: string[];
+  search?: string;
 };
 
 export function createGraphRoutes(pool: Pool): Router {
@@ -24,9 +25,11 @@ export function createGraphRoutes(pool: Pool): Router {
         if (req.query.tags) filters.tags = (req.query.tags as string).split(',');
         if (req.query.namespaces) filters.namespaces = (req.query.namespaces as string).split(',');
         if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
+        if (req.query.search) filters.search = req.query.search as string;
         
         const includeDependents = req.query.includeDependents === 'true';
-        req.log.debug({ includeDependents }, 'Processing dependency inclusion');
+        const showFullChain = req.query.showFullChain === 'true';
+        req.log.debug({ includeDependents, showFullChain }, 'Processing dependency inclusion');
 
         // If namespace filtering is active and includeDependents is true, expand the namespace list
         let finalNamespaces = filters.namespaces || [];
@@ -86,6 +89,117 @@ export function createGraphRoutes(pool: Pool): Router {
         req.log.debug({ expandedNamespaces: finalNamespaces }, 'Namespaces expanded with dependencies');
         }
 
+        // If showFullChain is true, expand to include ALL transitively connected services
+        if (showFullChain) {
+        req.log.debug('Processing full chain expansion');
+        
+        // Get all service dependencies to build the complete graph
+        const allDepsResult = await client.query(`
+            SELECT 
+            sd.from_service_namespace || '::' || sd.from_service_name as from_service,
+            sd.to_service_namespace || '::' || sd.to_service_name as to_service,
+            sd.from_service_namespace,
+            sd.from_service_name,
+            sd.to_service_namespace,
+            sd.to_service_name
+            FROM service_dependencies sd
+        `);
+        
+        // Build adjacency list for both directions (undirected graph for full connectivity)
+        const adjacencyList = new Map<string, Set<string>>();
+        const allServiceKeys = new Set<string>();
+        
+        allDepsResult.rows.forEach((dep: any) => {
+            const fromService = dep.from_service;
+            const toService = dep.to_service;
+            
+            allServiceKeys.add(fromService);
+            allServiceKeys.add(toService);
+            
+            // Add both directions for undirected connectivity
+            if (!adjacencyList.has(fromService)) {
+            adjacencyList.set(fromService, new Set());
+            }
+            if (!adjacencyList.has(toService)) {
+            adjacencyList.set(toService, new Set());
+            }
+            
+            adjacencyList.get(fromService)!.add(toService);
+            adjacencyList.get(toService)!.add(fromService);
+        });
+        
+        // Start with services in the filtered namespaces (if any) or all services
+        let seedServices = new Set<string>();
+        
+        if (finalNamespaces.length > 0) {
+            // Get all services in the filtered namespaces as seed services
+            const seedResult = await client.query(`
+            SELECT service_namespace || '::' || service_name as service_key,
+                   service_namespace, service_name
+            FROM services s
+            WHERE s.service_namespace = ANY($1)
+            `, [finalNamespaces]);
+            
+            seedResult.rows.forEach((row: any) => {
+            seedServices.add(row.service_key);
+            });
+        } else {
+            // If no namespace filter, start with all services (potentially very large!)
+            seedServices = new Set(allServiceKeys);
+        }
+        
+        // Perform BFS to find all transitively connected services
+        const connectedServices = new Set<string>();
+        const queue = Array.from(seedServices);
+        const visited = new Set<string>();
+        
+        req.log.debug({ seedServiceCount: seedServices.size }, 'Starting BFS traversal');
+        
+        while (queue.length > 0) {
+            const currentService = queue.shift()!;
+            
+            if (visited.has(currentService)) continue;
+            visited.add(currentService);
+            connectedServices.add(currentService);
+            
+            // Add all connected services to queue
+            const neighbors = adjacencyList.get(currentService);
+            if (neighbors) {
+            neighbors.forEach(neighbor => {
+                if (!visited.has(neighbor)) {
+                queue.push(neighbor);
+                }
+            });
+            }
+        }
+        
+        req.log.debug({ 
+            connectedServiceCount: connectedServices.size,
+            totalServiceCount: allServiceKeys.size 
+        }, 'BFS traversal completed');
+        
+        // Extract all namespaces from connected services and update finalNamespaces
+        const connectedNamespaces = new Set<string>();
+        connectedServices.forEach(serviceKey => {
+            const namespace = serviceKey.split('::')[0];
+            connectedNamespaces.add(namespace);
+        });
+        
+        finalNamespaces = Array.from(connectedNamespaces);
+        req.log.debug({ 
+            finalNamespaceCount: finalNamespaces.length,
+            connectedServiceCount: connectedServices.size 
+        }, 'Full chain expansion completed');
+        
+        // Add performance warning if result set is very large
+        if (connectedServices.size > 100) {
+            req.log.warn({ 
+            connectedServiceCount: connectedServices.size,
+            namespaceCount: finalNamespaces.length 
+            }, 'Large result set from full chain expansion');
+        }
+        }
+
         // Start with all services, then filter
         let servicesQuery = `
         SELECT 
@@ -123,6 +237,14 @@ export function createGraphRoutes(pool: Pool): Router {
             whereConditions.push(`s.service_namespace IN (${placeholders})`);
             params.push(...finalNamespaces);
         }
+        }
+
+        // Add search filter if present  
+        if (filters.search && filters.search.trim() !== '') {
+        const searchTerm = `%${filters.search.trim()}%`;
+        const searchParamIndex = params.length + 1;
+        whereConditions.push(`(s.service_namespace ILIKE $${searchParamIndex} OR s.service_name ILIKE $${searchParamIndex + 1})`);
+        params.push(searchTerm, searchTerm);
         }
 
         // Add WHERE clause if we have conditions
@@ -344,7 +466,8 @@ export function createGraphRoutes(pool: Pool): Router {
         nodes, 
         edges, 
         filters: filters,
-        expandedNamespaces: includeDependents ? finalNamespaces : undefined
+        expandedNamespaces: includeDependents ? finalNamespaces : undefined,
+        showFullChain: showFullChain
         });
         
     } catch (error) {

@@ -10,11 +10,11 @@ const getAntTheme = (currentTheme: 'light' | 'dark') => {
     return {
       algorithm: theme.darkAlgorithm,
       token: {
-        // Background colors
-        colorBgBase: '#0a0f1c',
-        colorBgContainer: '#1a1f2e',
-        colorBgLayout: '#0a0f1c',
-        colorBgElevated: '#1a1f2e',
+        // Background colors - match menu background for seamless blend
+        colorBgBase: '#1a1f2e', // Match menu background
+        colorBgContainer: '#1a1f2e', // Keep card backgrounds
+        colorBgLayout: '#1a1f2e', // Match menu background
+        colorBgElevated: '#1a1f2e', // Keep elevated components like modals
         
         // Primary colors (cyan/teal accent)
         colorPrimary: '#00d4aa',
@@ -26,7 +26,7 @@ const getAntTheme = (currentTheme: 'light' | 'dark') => {
         colorPrimaryActive: '#00b395',
         
         // Text colors
-        colorText: '#ffffff',
+        colorText: '#a0a6b8', // Match unselected menu item color
         colorTextSecondary: '#a0a6b8',
         colorTextTertiary: '#6b7280',
         colorTextQuaternary: '#4b5563',
@@ -48,9 +48,9 @@ const getAntTheme = (currentTheme: 'light' | 'dark') => {
       },
       components: {
         Layout: {
-          bodyBg: '#0a0f1c',
+          bodyBg: '#1a1f2e', // Match menu background for seamless blend
           headerBg: '#1a1f2e',
-          siderBg: '#1a1f2e',
+          siderBg: '#1a1f2e', // Keep menu background
           triggerBg: '#374151',
         },
         Menu: {
@@ -59,7 +59,7 @@ const getAntTheme = (currentTheme: 'light' | 'dark') => {
           darkItemColor: '#a0a6b8',
           darkItemSelectedColor: '#00d4aa',
           darkItemHoverBg: '#374151',
-          darkItemHoverColor: '#ffffff',
+          darkItemHoverColor: '#a0a6b8',
         },
         Card: {
           colorBgContainer: '#1a1f2e',
@@ -68,7 +68,7 @@ const getAntTheme = (currentTheme: 'light' | 'dark') => {
         Table: {
           colorBgContainer: '#1a1f2e',
           headerBg: '#374151',
-          headerColor: '#ffffff',
+          headerColor: '#a0a6b8',
           rowHoverBg: '#374151',
         },
         Button: {
