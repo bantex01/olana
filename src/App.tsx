@@ -9,7 +9,8 @@ import {
   DatabaseOutlined
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
-import { DashboardHome } from './components/Dashboard/DashboardHome';
+import { FilteredDashboard } from './components/Dashboard/FilteredDashboard';
+import { DashboardClassic } from './components/Dashboard/DashboardHome';
 import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
 import { ServicesPage } from './components/Services/ServicesPage';
@@ -25,7 +26,12 @@ const menuItems = [
   {
     key: 'home',
     icon: <HomeOutlined />,
-    label: 'Dashboard',
+    label: 'Mission Control',
+  },
+  {
+    key: 'dashboard-classic',
+    icon: <BarChartOutlined />,
+    label: 'Dashboard Classic',
   },
   {
     key: 'services',
@@ -88,7 +94,7 @@ const App: React.FC = () => {
       return `${serviceDetailParams.namespace}/${serviceDetailParams.name}`;
     }
     const item = menuItems.find(item => item.key === key);
-    return item?.label || 'Dashboard';
+    return item?.label || 'Mission Control';
   };
 
 
@@ -124,7 +130,9 @@ const App: React.FC = () => {
 
     switch (selectedKey) {
       case 'home':
-        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+        return <FilteredDashboard onLastUpdatedChange={setDashboardLastUpdated} />;
+      case 'dashboard-classic':
+        return <DashboardClassic onLastUpdatedChange={setDashboardLastUpdated} />;
       case 'services-overview':
       case 'services-catalog':
       case 'services-dependencies':
@@ -142,7 +150,7 @@ const App: React.FC = () => {
       case 'admin':
         return <div>Admin page (coming soon)</div>;
       default:
-        return <DashboardHome onLastUpdatedChange={setDashboardLastUpdated} />;
+        return <FilteredDashboard onLastUpdatedChange={setDashboardLastUpdated} />;
     }
   };
 
@@ -170,12 +178,11 @@ const App: React.FC = () => {
         <div style={{
           height: 64,
           margin: 16,
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: 6,
+          background: 'transparent', // Remove grey background
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'white',
+          color: '#a0a6b8', // Use same grey as other text
           fontWeight: 'bold',
           fontSize: collapsed ? '14px' : '16px',
           position: 'sticky',
@@ -184,7 +191,7 @@ const App: React.FC = () => {
         }}>
           {collapsed ? (
             <img 
-              src="/olana.png"
+              src="/olana2.png"
               alt="Logo" 
               style={{ 
                 height: 32, 
@@ -194,7 +201,7 @@ const App: React.FC = () => {
             />
           ) : (
             <img 
-              src="/olana.png" 
+              src="/olana2.png" 
               alt="Alert Hub" 
               style={{ 
                 height: 40, 
@@ -218,14 +225,15 @@ const App: React.FC = () => {
       {/* Main Layout */}
       <Layout style={{ 
         marginLeft: collapsed ? 80 : 240,
-        transition: 'margin-left 0.2s ease'
+        transition: 'margin-left 0.2s ease',
+        borderLeft: '1px solid #a0a6b8' // Grey left border to separate menu from content
       }}>
         {/* Header */}
         <Header 
         style={{ 
             padding: '0 24px', 
             background: colorBgContainer,
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: '1px solid #a0a6b8', // Grey border under header
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between'

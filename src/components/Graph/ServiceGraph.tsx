@@ -1,7 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Network, DataSet } from "vis-network/standalone/esm/vis-network";
 import type { Node, Edge, Alert, GraphFilters } from '../../types';
 import { logger } from '../../utils/logger';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface ServiceGraphProps {
   alerts: Alert[];
@@ -20,6 +21,71 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
   includeDependentNamespaces,
 }) => {
   const graphRef = useRef<HTMLDivElement>(null);
+  const networkRef = useRef<Network | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const nodesDataSetRef = useRef<DataSet<Node> | null>(null);
+  const { theme } = useTheme();
+
+  // Animation system for pulsing alert nodes
+  const startPulseAnimation = useCallback(() => {
+    if (!nodesDataSetRef.current) return;
+
+    const animate = () => {
+      const timestamp = Date.now();
+      const nodes = nodesDataSetRef.current!.get();
+      const updates: Array<{ id: string; size: number; borderWidth: number }> = [];
+
+      nodes.forEach((node) => {
+        if (node.nodeType === 'service' && node.highestSeverity && node.highestSeverity !== 'none') {
+          // Define pulse rates based on severity (in milliseconds)
+          const pulseRates: Record<string, number> = {
+            fatal: 1000,    // 1 second
+            critical: 2000, // 2 seconds  
+            warning: 3000,  // 3 seconds
+          };
+
+          const pulseRate = pulseRates[node.highestSeverity] || 3000;
+          
+          // Calculate pulse phase (0 to 1) using sine wave
+          const phase = (timestamp % pulseRate) / pulseRate;
+          const pulseValue = (Math.sin(phase * 2 * Math.PI) + 1) / 2; // 0 to 1
+
+          // Base size and pulse range
+          const baseSize = node.size || 25;
+          const pulseRange = 8; // How much bigger the node gets
+          const baseBorderWidth = 2;
+          const borderPulseRange = 3;
+
+          const newSize = baseSize + (pulseValue * pulseRange);
+          const newBorderWidth = baseBorderWidth + (pulseValue * borderPulseRange);
+
+          updates.push({
+            id: node.id,
+            size: newSize,
+            borderWidth: newBorderWidth
+          });
+        }
+      });
+
+      // Batch update all node changes
+      if (updates.length > 0) {
+        nodesDataSetRef.current!.update(updates);
+      }
+
+      // Continue animation
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    // Start the animation loop
+    animationRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  const stopPulseAnimation = useCallback(() => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+  }, []);
 
   const renderGraph = async (filters: GraphFilters = {}) => {
     try {
@@ -53,10 +119,10 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
         const sev = n.highestSeverity || "none";
 
         const colorMap: Record<string, string> = {
-          fatal: "black",
-          critical: "red",
-          warning: "orange",
-          none: "green",
+          fatal: "#000000",
+          critical: "#dc3545",
+          warning: "#fd7e14",
+          none: "#198754",
         };
 
         const shouldShowAlerts = n.nodeType === "service";
@@ -147,7 +213,11 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
           ...n,
           label: shouldShowAlerts ? `${n.label}${alertLabel}` : n.label,
           color: shouldShowAlerts ? colorMap[sev] : n.color,
-          title: tooltip
+          title: tooltip,
+          // Set initial properties for animation
+          size: shouldShowAlerts && sev !== 'none' ? 25 : (n.size || 20),
+          borderWidth: shouldShowAlerts && sev !== 'none' ? 2 : 1,
+          borderColor: shouldShowAlerts ? colorMap[sev] : undefined
         };
       });
 
@@ -158,10 +228,17 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
         logger.debug('- Edges:', edges.length);
         logger.debug('Sample colored node:', coloredNodes[0]);
         
+        // Stop any existing animation
+        stopPulseAnimation();
+
+        const nodesDataSet = new DataSet<Node>(coloredNodes);
         const data = {
-          nodes: new DataSet<Node>(coloredNodes),
+          nodes: nodesDataSet,
           edges: new DataSet<Edge>(edges),
         };
+
+        // Store reference to nodes dataset for animation
+        nodesDataSetRef.current = nodesDataSet;
 
         const options = {
           nodes: {
@@ -227,7 +304,14 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
         };
 
         logger.debug('Creating new Network...');
-        new Network(graphRef.current, data, options);
+        const network = new Network(graphRef.current, data, options);
+        networkRef.current = network;
+        
+        // Start pulse animation after network is created
+        setTimeout(() => {
+          startPulseAnimation();
+        }, 1000); // Small delay to let network initialize
+        
         logger.debug('Network created successfully');
       } else {
         logger.error('ERROR: graphRef.current is null - cannot render graph');
@@ -238,15 +322,24 @@ export const ServiceGraph: React.FC<ServiceGraphProps> = ({
   };
 
   // Render graph when component mounts or filters change
-    useEffect(() => {
+  useEffect(() => {
     renderGraph(currentFilters);
-    }, [
+  }, [
     JSON.stringify(currentFilters), 
-    includeDependentNamespaces
-    ]);
+    includeDependentNamespaces,
+    theme // Re-render when theme changes
+  ]);
+
+  // Cleanup animation on unmount
+  useEffect(() => {
+    return () => {
+      stopPulseAnimation();
+    };
+  }, [stopPulseAnimation]);
 
   return (
     <div
+      key={`graph-${theme}`} // Force remount on theme change
       ref={graphRef}
       style={{ height: "600px", border: "1px solid #ccc", marginBottom: "2rem" }}
     />

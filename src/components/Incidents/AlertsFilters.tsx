@@ -1,16 +1,19 @@
 import React from 'react';
-import { Card, Checkbox, Space, Button, Select, Input } from 'antd';
-import { FilterOutlined, ClearOutlined, SearchOutlined } from '@ant-design/icons';
+import { Checkbox, Space, Button, Select, Input, theme } from 'antd';
+import { ClearOutlined, SearchOutlined } from '@ant-design/icons';
 
 const { Option } = Select;
 
 interface AlertsFiltersProps {
   selectedSeverities: string[];
   selectedNamespaces: string[];
+  selectedTags: string[];
   searchTerm: string;
   availableNamespaces: string[];
+  availableTags: string[];
   onSeverityChange: (severities: string[]) => void;
   onNamespaceChange: (namespaces: string[]) => void;
+  onTagsChange: (tags: string[]) => void;
   onSearchChange: (term: string) => void;
   onClearAll: () => void;
 }
@@ -18,15 +21,19 @@ interface AlertsFiltersProps {
 export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
   selectedSeverities,
   selectedNamespaces,
+  selectedTags,
   searchTerm,
   availableNamespaces,
+  availableTags,
   onSeverityChange,
   onNamespaceChange,
+  onTagsChange,
   onSearchChange,
   onClearAll,
 }) => {
+  const { token } = theme.useToken();
   const severityOptions = [
-    { value: 'fatal', label: 'Fatal', color: 'black' },
+    { value: 'fatal', label: 'Fatal', color: '#8c8c8c' }, // Grey instead of black for visibility
     { value: 'critical', label: 'Critical', color: 'red' },
     { value: 'warning', label: 'Warning', color: 'orange' },
   ];
@@ -39,26 +46,28 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
     onNamespaceChange(values);
   };
 
+  const handleTagsChange = (values: string[]) => {
+    onTagsChange(values);
+  };
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onSearchChange(e.target.value);
   };
 
   const hasActiveFilters = selectedSeverities.length > 0 || 
                           selectedNamespaces.length > 0 || 
+                          selectedTags.length > 0 ||
                           searchTerm.trim() !== '';
 
   return (
-    <Card 
-      size="small" 
-      style={{ marginBottom: 16 }}
-      title={
-        <Space>
-          <FilterOutlined />
-          Filters
-        </Space>
-      }
-      extra={
-        hasActiveFilters && (
+    <div style={{ width: '100%' }}>
+      {/* Header with clear button */}
+      {hasActiveFilters && (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end', 
+          marginBottom: '16px' 
+        }}>
           <Button 
             size="small" 
             icon={<ClearOutlined />} 
@@ -66,9 +75,8 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
           >
             Clear All
           </Button>
-        )
-      }
-    >
+        </div>
+      )}
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {/* Service Name Search */}
         <div>
@@ -102,6 +110,25 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
           </Select>
         </div>
 
+        {/* Tags Filter */}
+        <div>
+          <strong style={{ marginRight: 12 }}>Tags:</strong>
+          <Select
+            mode="multiple"
+            placeholder="Select tags..."
+            value={selectedTags}
+            onChange={handleTagsChange}
+            style={{ minWidth: 300 }}
+            maxTagCount="responsive"
+          >
+            {availableTags.map(tag => (
+              <Option key={tag} value={tag}>
+                {tag}
+              </Option>
+            ))}
+          </Select>
+        </div>
+
         {/* Severity Filter */}
         <div>
           <strong style={{ marginRight: 12 }}>Severity:</strong>
@@ -125,16 +152,19 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
         {hasActiveFilters && (
           <div style={{ 
             fontSize: '12px', 
-            color: '#666',
-            backgroundColor: '#f0f0f0',
+            color: token.colorTextSecondary,
+            backgroundColor: token.colorFillSecondary,
             padding: '8px 12px',
-            borderRadius: '4px',
-            border: '1px solid #d9d9d9'
+            borderRadius: token.borderRadius,
+            border: `1px solid ${token.colorBorder}`
           }}>
             <strong>Active filters:</strong>
             <div style={{ marginTop: '4px' }}>
               {selectedNamespaces.length > 0 && (
                 <div>• Namespaces: {selectedNamespaces.join(', ')}</div>
+              )}
+              {selectedTags.length > 0 && (
+                <div>• Tags: {selectedTags.join(', ')}</div>
               )}
               {selectedSeverities.length > 0 && (
                 <div>• Severities: {selectedSeverities.join(', ')}</div>
@@ -146,6 +176,6 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
           </div>
         )}
       </Space>
-    </Card>
+    </div>
   );
 };

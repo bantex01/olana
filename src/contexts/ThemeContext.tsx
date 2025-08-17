@@ -32,7 +32,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       root.style.setProperty('--bg-primary', '#0a0f1c');
       root.style.setProperty('--bg-secondary', '#1a1f2e');
       root.style.setProperty('--bg-tertiary', '#374151');
-      root.style.setProperty('--text-primary', '#ffffff');
+      root.style.setProperty('--text-primary', '#a0a6b8');
       root.style.setProperty('--text-secondary', '#a0a6b8');
       root.style.setProperty('--accent-primary', '#00d4aa');
       root.style.setProperty('--accent-hover', '#00f0c0');

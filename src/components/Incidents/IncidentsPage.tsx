@@ -233,10 +233,13 @@ const handleClearAll = () => {
       <AlertsFilters
         selectedSeverities={filters.severities || []}
         selectedNamespaces={filters.namespaces || []}
+        selectedTags={[]}
         searchTerm={filters.search || ''}
         availableNamespaces={availableNamespaces}
+        availableTags={[]}
         onSeverityChange={handleSeverityChange}
         onNamespaceChange={handleNamespaceChange}
+        onTagsChange={() => {}} 
         onSearchChange={handleSearchChange}
         onClearAll={handleClearAll}
       />

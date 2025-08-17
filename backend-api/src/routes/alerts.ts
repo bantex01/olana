@@ -103,6 +103,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       if (req.query.tags) filters.tags = (req.query.tags as string).split(',');
       if (req.query.namespaces) filters.namespaces = (req.query.namespaces as string).split(',');
       if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
+      if (req.query.search) filters.search = req.query.search as string;
 
       // Start building the query
       let alertQuery = `
@@ -134,8 +135,8 @@ export function createAlertsRoutes(pool: Pool): Router {
       params.push('firing');
       paramIndex++;
 
-      // Handle service filtering (tags and namespaces)
-      if (filters.tags || filters.namespaces) {
+      // Handle service filtering (tags, namespaces, and search)
+      if (filters.tags || filters.namespaces || filters.search) {
         let serviceSubquery = `EXISTS (
           SELECT 1 FROM services s 
           WHERE s.service_namespace = i.service_namespace 
@@ -157,6 +158,13 @@ export function createAlertsRoutes(pool: Pool): Router {
             serviceSubquery += ` AND s.service_namespace IN (${placeholders})`;
             params.push(...filters.namespaces);
           }
+        }
+
+        if (filters.search && filters.search.trim() !== '') {
+          const searchTerm = `%${filters.search.trim()}%`;
+          serviceSubquery += ` AND (s.service_namespace ILIKE $${paramIndex} OR s.service_name ILIKE $${paramIndex + 1})`;
+          params.push(searchTerm, searchTerm);
+          paramIndex += 2;
         }
 
         serviceSubquery += ')';
