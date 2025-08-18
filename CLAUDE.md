@@ -120,3 +120,170 @@ npm run db:migrate:prod
 - **Health Monitoring**: Automated health checks with alerting capability
 - **Error Handling**: Structured error responses with correlation IDs
 
+# Reusable Service Map & Filter Components
+
+When creating new pages that need service maps and/or filtering capabilities, use these standardized patterns:
+
+## Quick Setup for Service Map + Filters
+
+  ```typescript
+  import { useFilterState } from '../../hooks/useFilterState';
+  import { useServiceMapData } from '../../hooks/useServiceMapData';
+  import { AlertsFilters } from '../Incidents/AlertsFilters';
+  import { ServiceMap } from '../ServiceMap';
+
+  const MyNewPage = () => {
+    const { state, actions, helpers } = useFilterState();
+    const { data, serviceMapData, fetchData } = useServiceMapData();
+
+    // Fetch data when filters change
+    useEffect(() => {
+      const filters = helpers.buildGraphFilters();
+      const options = {
+        includeDependentNamespaces: state.includeDependentNamespaces,
+        showFullChain: state.showFullChain
+      };
+      fetchData(filters, options);
+    }, [state.selectedNamespaces, state.selectedSeverities, state.selectedTags, state.searchTerm]);
+
+    return (
+      <div>
+        {/* Filters */}
+        <AlertsFilters
+          selectedSeverities={state.selectedSeverities}
+          selectedNamespaces={state.selectedNamespaces}
+          selectedTags={state.selectedTags}
+          searchTerm={state.searchTerm}
+          availableNamespaces={state.availableNamespaces}
+          availableTags={state.availableTags}
+          onSeverityChange={actions.handleSeverityChange}
+          onNamespaceChange={actions.handleNamespaceChange}
+          onTagsChange={actions.handleTagsChange}
+          onSearchChange={actions.handleSearchChange}
+          onClearAll={actions.handleClearAll}
+        />
+
+        {/* Service Map */}
+        <ServiceMap
+          alerts={serviceMapData.allAlerts}
+          nodes={serviceMapData.nodes}
+          edges={serviceMapData.edges}
+          loading={data.loading}
+          totalServices={data.systemHealth.totalServices}
+          config={{
+            height: '500px',
+            showControls: true,
+            showHeader: true,
+            showLegend: true
+          }}
+        />
+      </div>
+    );
+  };
+
+  Architecture Notes
+
+  - useFilterState: Manages all filter state and provides clean handlers
+  - useServiceMapData: Handles data fetching with filtering support
+  - ServiceMap: Configurable component that can be embedded anywhere
+  - AlertsFilters: Reusable filter UI component
+
+  This pattern ensures consistency and makes adding service maps to new pages trivial.
+
+## Agents and experts
+You have the following experts and agents available to you that you should use/consult with:
+
+typescript-react-frontend-engineer 
+observability-engineer
+postgres-typescript-backend-engineer
+ui-ux-design-expert
+saas-observability-gtm-expert
+
+# Card Library Architecture
+
+  Our application uses a centralized card library for consistent, reusable UI components across all pages.
+
+  ## 📁 Card Library Structure
+
+  src/components/Cards/
+  ├── index.ts                    # Central export point - import all cards from here
+  ├── Metrics/                    # System-level metrics (services, alerts, counts)
+  │   ├── TotalServicesCard.tsx
+  │   ├── ServicesWithIssuesCard.tsx
+  │   ├── OpenAlertsLast24hCard.tsx
+  │   ├── TotalOpenAlertsCard.tsx
+  │   └── index.ts
+  ├── Performance/               # Performance metrics (MTTR, MTTA, SLA)
+  │   ├── MTTACard.tsx
+  │   ├── MTTALast24hCard.tsx
+  │   ├── MTTRCard.tsx
+  │   ├── MTTRLast24hCard.tsx
+  │   └── index.ts
+  └── Services/                  # Service-specific cards (health, alerts, connectivity)
+      ├── ServiceHealthCard.tsx  # (will be moved here during refactoring)
+      ├── ServiceAlertsCard.tsx  # (will be moved here during refactoring)
+      └── index.ts
+
+  ## 🎯 **Card Design Principles**
+
+  ### 1. Self-Contained Components
+  Each card is a complete, standalone component with:
+  - Clean props interface
+  - Consistent Ant Design styling (Card + Statistic)
+  - Loading states
+  - Appropriate icons and colors
+
+  ### 2. Standard Props Pattern
+  ```typescript
+  interface CardProps {
+    value: number | string;
+    loading?: boolean;
+    // Additional card-specific props as needed
+  }
+
+  3. Organized by Purpose
+
+  - Metrics/: System-wide counts and totals
+  - Performance/: Time-based performance metrics
+  - Services/: Service-specific detailed cards
+
+  💡 Usage Examples
+
+  Import from centralized location:
+
+  import {
+    TotalServicesCard,
+    ServicesWithIssuesCard,
+    MTTACard,
+    ServiceHealthCard
+  } from '../Cards';
+
+  Use in any layout:
+
+  <Row gutter={[16, 16]}>
+    <Col span={6}>
+      <TotalServicesCard value={totalServices} loading={loading} />
+    </Col>
+    <Col span={6}>
+      <ServicesWithIssuesCard value={servicesWithIssues} loading={loading} />
+    </Col>
+  </Row>
+
+  🔄 Migration Strategy
+
+  When refactoring existing pages:
+  1. Check if cards exist in the library before creating new ones
+  2. Move existing cards from src/components/Services/ to appropriate library location
+  3. Update imports to use centralized Cards export
+  4. Follow Mission Control as the production standard template
+
+  ⚠️ Important Notes
+
+  - Mission Control (FilteredDashboard.tsx) is the reference implementation
+  - Don't duplicate cards - reuse existing ones or create new ones in the library
+  - Maintain consistency - all cards should follow the established patterns
+  - Pages decide layout - cards are building blocks, layouts are page-specific
+
+  This gives future sessions a clear roadmap for maintaining and extending the card library!
+
+
