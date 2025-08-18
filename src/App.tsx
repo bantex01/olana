@@ -85,8 +85,22 @@ const App: React.FC = () => {
   const [, setDashboardLastUpdated] = useState<Date | null>(null);
   
   const {
-    token: { colorBgContainer, borderRadiusLG },
+    token: { colorBgContainer, borderRadiusLG, colorPrimary },
   } = theme.useToken();
+
+  // Detect if we're in dark mode - check for dark background colors
+  const isDarkMode = colorBgContainer && (
+    colorBgContainer.includes('#1') || 
+    colorBgContainer.includes('#0') ||
+    colorBgContainer === 'rgb(20, 20, 20)' ||
+    parseInt(colorBgContainer.replace('#', ''), 16) < 0x808080
+  );
+  
+  console.log('Theme debug:', { 
+    colorBgContainer, 
+    colorPrimary,
+    isDarkMode 
+  });
 
   // Get page title based on selected menu
   const getPageTitle = (key: string) => {
@@ -191,20 +205,20 @@ const App: React.FC = () => {
         }}>
           {collapsed ? (
             <img 
-              src="/olana2.png"
+              src="olana5.png"
               alt="Logo" 
               style={{ 
-                height: 32, 
-                width: 32, 
+                height: 50, 
+                width: 50, 
                 objectFit: 'contain' 
               }} 
             />
           ) : (
             <img 
-              src="/olana2.png" 
+              src="olana5.png" 
               alt="Alert Hub" 
               style={{ 
-                height: 40, 
+                height: 100, 
                 maxWidth: '180px', 
                 objectFit: 'contain' 
               }} 
@@ -240,7 +254,12 @@ const App: React.FC = () => {
         }}
         >
         <div style={{ paddingTop: 8, paddingBottom: 8 }}>
-        <Title level={3} style={{ margin: 0, lineHeight: 1.2 }}>
+        <Title level={3} style={{ 
+          margin: 0, 
+          lineHeight: 1.2,
+          fontWeight: 'normal',
+          color: isDarkMode ? '#1dd1a1' : undefined  // Match the active menu item teal color
+        }}>
             {getPageTitle(selectedKey)}
         </Title>
         </div>

@@ -1,245 +1,102 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Row, Col, Card, Statistic, Alert, Collapse } from 'antd';
+import React, { useEffect, useCallback } from 'react';
+import { Row, Col, Alert, Collapse } from 'antd';
 import { 
-  AlertOutlined, 
-  ExclamationCircleOutlined,
-  NodeIndexOutlined,
-  BugOutlined,
   ForkOutlined,
   FilterOutlined,
-  ClockCircleOutlined,
-  HistoryOutlined
+  AlertOutlined
 } from '@ant-design/icons';
 import { AlertsFilters } from '../Incidents/AlertsFilters';
-import { DashboardServiceMap } from './DashboardServiceMap';
+import { ServiceMap } from '../ServiceMap';
 import { AlertTimeChart } from './AlertTimeChart';
-import { API_BASE_URL } from '../../utils/api';
-import { logger } from '../../utils/logger';
-import type { Alert as AlertType, Node, Edge, GraphFilters } from '../../types';
+import { useFilterState } from '../../hooks/useFilterState';
+import { useServiceMapData } from '../../hooks/useServiceMapData';
+import {
+  TotalServicesCard,
+  ServicesWithIssuesCard,
+  OpenAlertsLast24hCard,
+  TotalOpenAlertsCard,
+  FatalAlertsCard,
+  CriticalAlertsCard,
+  WarningAlertsCard,
+  DeploymentsLast24hCard,
+  RecentDeploymentsCard,
+  EventsLast24hCard,
+  RecentEventsCard,
+  MTTACard,
+  MTTALast24hCard,
+  MTTRCard,
+  MTTRLast24hCard
+} from '../Cards';
+import { ServiceAlertSummaryTable } from '../Common/ServiceAlertSummaryTable';
+import { ServicePerformanceTable } from '../Common/ServicePerformanceTable';
+import { RecentDeploymentsTable } from '../Common/RecentDeploymentsTable';
 
 
-interface DashboardData {
-  activeAlerts: AlertType[];
-  systemHealth: {
-    totalServices: number;
-    servicesWithIssues: number;
-    totalAlertsLast24h: number;
-    totalOpenAlerts: number;
-  };
-  loading: boolean;
-  error: string | null;
-}
 
 interface FilteredDashboardProps {
   onLastUpdatedChange: (date: Date) => void;
 }
 
 export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpdatedChange }) => {
-  const [data, setData] = useState<DashboardData>({
-    activeAlerts: [],
-    systemHealth: {
-      totalServices: 0,
-      servicesWithIssues: 0,
-      totalAlertsLast24h: 0,
-      totalOpenAlerts: 0
-    },
-    loading: true,
-    error: null
-  });
-
-  // Filter states
-  const [selectedSeverities, setSelectedSeverities] = useState<string[]>([]);
-  const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [availableNamespaces, setAvailableNamespaces] = useState<string[]>([]);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
-  const [includeDependentNamespaces, setIncludeDependentNamespaces] = useState<boolean>(false);
-  const [showFullChain, setShowFullChain] = useState<boolean>(false);
-
-  // Graph state
-  const [graphNodes, setGraphNodes] = useState<Node[]>([]);
-  const [graphEdges, setGraphEdges] = useState<Edge[]>([]);
-  const [allAlerts, setAllAlerts] = useState<AlertType[]>([]); // All alerts for pulsing
-
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  // Use reusable filter state hook
+  const { state: filterState, actions: filterActions, helpers: filterHelpers } = useFilterState();
+  
+  // Use reusable service map data hook
+  const { data, serviceMapData, fetchData, refreshData } = useServiceMapData();
 
 
 
 
 
-  // Fetch dashboard data with filters applied
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setData(prev => ({ ...prev, loading: true, error: null }));
-
-      // Build filters directly here to avoid dependency issues
-      const filters: GraphFilters = {
-        namespaces: selectedNamespaces.length > 0 ? selectedNamespaces : undefined,
-        severities: selectedSeverities.length > 0 ? selectedSeverities : undefined,
-        tags: selectedTags.length > 0 ? selectedTags : undefined,
-        search: searchTerm.trim() !== '' ? searchTerm.trim() : undefined,
-      };
-
-      // Build alert query
-      const params = new URLSearchParams();
-      if (filters.namespaces && filters.namespaces.length > 0) {
-        params.append('namespaces', filters.namespaces.join(','));
-      }
-      if (filters.severities && filters.severities.length > 0) {
-        params.append('severities', filters.severities.join(','));
-      }
-      if (filters.tags && filters.tags.length > 0) {
-        params.append('tags', filters.tags.join(','));
-      }
-      if (filters.search && filters.search.trim() !== '') {
-        params.append('search', filters.search.trim());
-      }
-      const alertQuery = params.toString() ? `?${params.toString()}` : '';
-      
-      // Fetch filtered alerts for metrics
-      const alertsUrl = `${API_BASE_URL}/alerts${alertQuery}`;
-      const alertsResponse = await fetch(alertsUrl);
-      const activeAlerts = await alertsResponse.json();
-
-      // Fetch ALL alerts for service map pulsing (unfiltered)
-      const allAlertsResponse = await fetch(`${API_BASE_URL}/alerts`);
-      const allAlerts = await allAlertsResponse.json();
-
-      // Fetch analytics for 24h data (filtered)
-      const analyticsUrl = `${API_BASE_URL}/alerts/analytics?hours=24${alertQuery.replace('?', '&')}`;
-      const analyticsResponse = await fetch(analyticsUrl);
-      const analyticsData = await analyticsResponse.json();
-
-      // Fetch graph data to get total services count (filtered)
-      const graphParams = new URLSearchParams();
-      if (filters.namespaces && filters.namespaces.length > 0) {
-        graphParams.append('namespaces', filters.namespaces.join(','));
-        if (includeDependentNamespaces) {
-          graphParams.append('includeDependents', 'true');
-        }
-      }
-      if (showFullChain) {
-        graphParams.append('showFullChain', 'true');
-      }
-      if (filters.severities && filters.severities.length > 0) {
-        graphParams.append('severities', filters.severities.join(','));
-      }
-      if (filters.tags && filters.tags.length > 0) {
-        graphParams.append('tags', filters.tags.join(','));
-      }
-      if (filters.search && filters.search.trim() !== '') {
-        graphParams.append('search', filters.search.trim());
-      }
-      const graphQueryString = graphParams.toString();
-      const graphUrl = `${API_BASE_URL}/graph${graphQueryString ? `?${graphQueryString}` : ''}`;
-      
-      const graphResponse = await fetch(graphUrl);
-      const graphData = await graphResponse.json();
-      const nodes = graphData.nodes || [];
-      setGraphNodes(nodes);
-      setGraphEdges(graphData.edges || []);
-      
-      const totalServices = nodes.filter((n: Node) => n.nodeType === 'service').length;
-
-      // Calculate services with issues (unique services that have active alerts)
-      const servicesWithIssues = new Set(
-        activeAlerts.map((alert: AlertType) => `${alert.service_namespace}::${alert.service_name}`)
-      ).size;
-
-      setData({
-        activeAlerts,
-        systemHealth: {
-          totalServices,
-          servicesWithIssues,
-          totalAlertsLast24h: analyticsData.summary?.total_incidents || 0,
-          totalOpenAlerts: activeAlerts.length
-        },
-        loading: false,
-        error: null
-      });
-
-      // Store all alerts separately for service map pulsing
-      setAllAlerts(allAlerts);
-
-      // Update last updated timestamp
-      const now = new Date();
-      setLastUpdated(now);
-      onLastUpdatedChange(now);
-
-    } catch (error) {
-      logger.error('Failed to fetch dashboard data:', error);
-      setData(prev => ({
-        ...prev,
-        loading: false,
-        error: 'Failed to load dashboard data'
-      }));
-    }
-  }, [selectedNamespaces, selectedSeverities, selectedTags, searchTerm, includeDependentNamespaces, showFullChain, onLastUpdatedChange]);
-
-  // Fetch available namespaces for filter dropdown
-  const fetchAvailableNamespaces = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/graph`);
-      const graphData = await response.json();
-      const namespaces = [...new Set(
-        graphData.nodes
-          ?.filter((n: Node) => n.nodeType === 'service')
-          ?.map((n: Node) => n.id.split('::')[0]) || []
-      )].sort() as string[];
-      setAvailableNamespaces(namespaces);
-    } catch (error) {
-      logger.error('Failed to fetch namespaces:', error);
-    }
+  // Fetch data using the reusable hook
+  const handleFetchData = async () => {
+    const filters = filterHelpers.buildGraphFilters();
+    const options = {
+      includeDependentNamespaces: filterState.includeDependentNamespaces,
+      showFullChain: filterState.showFullChain
+    };
+    
+    await fetchData(filters, options);
+    
+    // Update last updated timestamp
+    const now = new Date();
+    onLastUpdatedChange(now);
   };
 
-  // Fetch available tags for filter dropdown
-  const fetchAvailableTags = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/tags`);
-      const data = await response.json();
-      setAvailableTags((data.tags as string[]) || []);
-    } catch (error) {
-      logger.error('Failed to fetch tags:', error);
-    }
-  };
 
-  // Filter handlers
-  const handleSeverityChange = (severities: string[]) => {
-    setSelectedSeverities(severities);
-  };
+  // Memoize the fetch function to prevent infinite loops
+  const memoizedFetchData = useCallback(async () => {
+    const filters = {
+      namespaces: filterState.selectedNamespaces.length > 0 ? filterState.selectedNamespaces : undefined,
+      severities: filterState.selectedSeverities.length > 0 ? filterState.selectedSeverities : undefined,
+      tags: filterState.selectedTags.length > 0 ? filterState.selectedTags : undefined,
+      search: filterState.searchTerm.trim() !== '' ? filterState.searchTerm.trim() : undefined,
+    };
+    const options = {
+      includeDependentNamespaces: filterState.includeDependentNamespaces,
+      showFullChain: filterState.showFullChain
+    };
+    
+    await fetchData(filters, options);
+    
+    // Update last updated timestamp
+    const now = new Date();
+    onLastUpdatedChange(now);
+  }, [
+    filterState.selectedNamespaces, 
+    filterState.selectedSeverities, 
+    filterState.selectedTags, 
+    filterState.searchTerm, 
+    filterState.includeDependentNamespaces, 
+    filterState.showFullChain,
+    fetchData,
+    onLastUpdatedChange
+  ]);
 
-  const handleNamespaceChange = (namespaces: string[]) => {
-    setSelectedNamespaces(namespaces);
-  };
-
-  const handleTagsChange = (tags: string[]) => {
-    setSelectedTags(tags);
-  };
-
-  const handleSearchChange = (term: string) => {
-    setSearchTerm(term);
-  };
-
-  const handleClearAll = () => {
-    setSelectedSeverities([]);
-    setSelectedNamespaces([]);
-    setSelectedTags([]);
-    setSearchTerm('');
-    setIncludeDependentNamespaces(false);
-    setShowFullChain(false);
-  };
-
-  // Initial data fetch and setup intervals
+  // Fetch data when filters change
   useEffect(() => {
-    fetchAvailableNamespaces();
-    fetchAvailableTags();
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-    // Only refresh when filters change, not on a timer
-  }, [selectedNamespaces, selectedSeverities, selectedTags, searchTerm, includeDependentNamespaces, showFullChain]);
+    memoizedFetchData();
+  }, [memoizedFetchData]);
 
   if (data.error) {
     return (
@@ -249,7 +106,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         type="error"
         showIcon
         action={
-          <button onClick={fetchDashboardData}>Retry</button>
+          <button onClick={handleFetchData}>Retry</button>
         }
       />
     );
@@ -272,23 +129,23 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
                   fontWeight: 'normal',
                   marginLeft: '8px'
                 }}>
-                  ({selectedSeverities.length + selectedNamespaces.length + selectedTags.length + (searchTerm.trim() !== '' ? 1 : 0)} active filters)
+                  ({filterHelpers.getActiveFilterCount()} active filters)
                 </span>
               </div>
             ),
             children: (
               <AlertsFilters
-                selectedSeverities={selectedSeverities}
-                selectedNamespaces={selectedNamespaces}
-                selectedTags={selectedTags}
-                searchTerm={searchTerm}
-                availableNamespaces={availableNamespaces}
-                availableTags={availableTags}
-                onSeverityChange={handleSeverityChange}
-                onNamespaceChange={handleNamespaceChange}
-                onTagsChange={handleTagsChange}
-                onSearchChange={handleSearchChange}
-                onClearAll={handleClearAll}
+                selectedSeverities={filterState.selectedSeverities}
+                selectedNamespaces={filterState.selectedNamespaces}
+                selectedTags={filterState.selectedTags}
+                searchTerm={filterState.searchTerm}
+                availableNamespaces={filterState.availableNamespaces}
+                availableTags={filterState.availableTags}
+                onSeverityChange={filterActions.handleSeverityChange}
+                onNamespaceChange={filterActions.handleNamespaceChange}
+                onTagsChange={filterActions.handleTagsChange}
+                onSearchChange={filterActions.handleSearchChange}
+                onClearAll={filterActions.handleClearAll}
               />
             ),
           },
@@ -301,126 +158,102 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
       {/* System Overview Cards underneath filters */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="Total Services"
-              value={data.systemHealth.totalServices}
-              prefix={<NodeIndexOutlined />}
-              valueStyle={{ color: '#1890ff', fontSize: '20px' }}
-            />
-          </Card>
+          <TotalServicesCard 
+            value={data.systemHealth.totalServices} 
+            loading={data.loading} 
+          />
         </Col>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="Services with Issues"
-              value={data.systemHealth.servicesWithIssues}
-              prefix={<BugOutlined />}
-              valueStyle={{ color: data.systemHealth.servicesWithIssues > 0 ? '#faad14' : '#52c41a', fontSize: '20px' }}
-            />
-          </Card>
+          <ServicesWithIssuesCard 
+            value={data.systemHealth.servicesWithIssues} 
+            loading={data.loading} 
+          />
         </Col>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="Open Alerts (24h)"
-              value={data.systemHealth.totalAlertsLast24h}
-              prefix={<ExclamationCircleOutlined />}
-              valueStyle={{ color: '#722ed1', fontSize: '20px' }}
-            />
-          </Card>
+          <OpenAlertsLast24hCard 
+            value={data.systemHealth.totalAlertsLast24h} 
+            loading={data.loading} 
+          />
         </Col>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="Total Open Alerts"
-              value={data.systemHealth.totalOpenAlerts}
-              prefix={<AlertOutlined />}
-              valueStyle={{ color: data.systemHealth.totalOpenAlerts > 0 ? '#cf1322' : '#52c41a', fontSize: '20px' }}
-            />
-          </Card>
+          <TotalOpenAlertsCard 
+            value={data.systemHealth.totalOpenAlerts} 
+            loading={data.loading} 
+          />
         </Col>
       </Row>
 
-      {/* Placeholder MTTA/MTTR Cards */}
+      {/* Performance Metrics Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="MTTA (Mean Time to Acknowledge)"
-              value="12.5"
-              suffix="min"
-              prefix={<ClockCircleOutlined />}
-              valueStyle={{ color: '#52c41a', fontSize: '20px' }}
-            />
-            <div style={{ 
-              fontSize: '11px', 
-              color: '#a0a6b8', 
-              fontStyle: 'italic',
-              marginTop: '4px' 
-            }}>
-              Placeholder data only
-            </div>
-          </Card>
+          <MTTACard 
+            value="12.5" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
         </Col>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="MTTA (Last 24h)"
-              value="8.2"
-              suffix="min"
-              prefix={<ClockCircleOutlined />}
-              valueStyle={{ color: '#52c41a', fontSize: '20px' }}
-            />
-            <div style={{ 
-              fontSize: '11px', 
-              color: '#a0a6b8', 
-              fontStyle: 'italic',
-              marginTop: '4px' 
-            }}>
-              Placeholder data only
-            </div>
-          </Card>
+          <MTTALast24hCard 
+            value="8.2" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
         </Col>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="MTTR (Mean Time to Resolve)"
-              value="45.8"
-              suffix="min"
-              prefix={<HistoryOutlined />}
-              valueStyle={{ color: '#1890ff', fontSize: '20px' }}
-            />
-            <div style={{ 
-              fontSize: '11px', 
-              color: '#a0a6b8', 
-              fontStyle: 'italic',
-              marginTop: '4px' 
-            }}>
-              Placeholder data only
-            </div>
-          </Card>
+          <MTTRCard 
+            value="45.8" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
         </Col>
         <Col span={6}>
-          <Card size="small">
-            <Statistic
-              title="MTTR (Last 24h)"
-              value="32.1"
-              suffix="min"
-              prefix={<HistoryOutlined />}
-              valueStyle={{ color: '#1890ff', fontSize: '20px' }}
-            />
-            <div style={{ 
-              fontSize: '11px', 
-              color: '#a0a6b8', 
-              fontStyle: 'italic',
-              marginTop: '4px' 
-            }}>
-              Placeholder data only
-            </div>
-          </Card>
+          <MTTRLast24hCard 
+            value="32.1" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
         </Col>
       </Row>
+
+      {/* Deployment & Events Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col span={6}>
+          <DeploymentsLast24hCard 
+            value="12" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
+        </Col>
+        <Col span={6}>
+          <RecentDeploymentsCard 
+            value="10" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
+        </Col>
+        <Col span={6}>
+          <EventsLast24hCard 
+            value="24" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
+        </Col>
+        <Col span={6}>
+          <RecentEventsCard 
+            value="8" 
+            loading={data.loading} 
+            isPlaceholder={true} 
+          />
+        </Col>
+      </Row>
+
+      {/* Recent Deployments Table */}
+      <div style={{ marginBottom: 24 }}>
+        <RecentDeploymentsTable 
+          loading={data.loading} 
+          isPlaceholder={true} 
+        />
+      </div>
 
       {/* Alert Timeline Chart - Choose version */}
       {/* Original SVG version (fixed aspect ratio): */}
@@ -444,28 +277,122 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
                   fontWeight: 'normal',
                   marginLeft: '8px'
                 }}>
-                  ({data.systemHealth.totalServices} services • {graphNodes.filter(n => n.nodeType === 'namespace').length} namespaces)
+                  ({data.systemHealth.totalServices} services • {serviceMapData.nodes.filter(n => n.nodeType === 'namespace').length} namespaces)
                 </span>
               </div>
             ),
             children: (
-              <DashboardServiceMap
-                alerts={allAlerts}
-                nodes={graphNodes}
-                edges={graphEdges}
+              <ServiceMap
+                alerts={serviceMapData.allAlerts}
+                nodes={serviceMapData.nodes}
+                edges={serviceMapData.edges}
                 loading={data.loading}
                 totalServices={data.systemHealth.totalServices}
-                lastUpdated={lastUpdated}
-                includeDependentNamespaces={includeDependentNamespaces}
-                showFullChain={showFullChain}
-                onRefresh={fetchDashboardData}
-                onIncludeDependentNamespacesChange={setIncludeDependentNamespaces}
-                onShowFullChainChange={setShowFullChain}
+                lastUpdated={new Date()}
+                includeDependentNamespaces={filterState.includeDependentNamespaces}
+                showFullChain={filterState.showFullChain}
+                onRefresh={refreshData}
+                onIncludeDependentNamespacesChange={filterActions.setIncludeDependentNamespaces}
+                onShowFullChainChange={filterActions.setShowFullChain}
+                config={{
+                  height: '500px',
+                  showControls: true,
+                  showHeader: true,
+                  showLegend: true,
+                  enableFocusMode: true,
+                  enableRefresh: true,
+                  enableAutoRefresh: true
+                }}
               />
             ),
           },
         ]}
         defaultActiveKey={['service-map']}
+        size="large"
+        style={{ marginTop: '8px' }}
+      />
+
+      {/* Alerts Summary Section - Collapsible */}
+      <Collapse
+        items={[
+          {
+            key: 'alerts-summary',
+            label: (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertOutlined style={{ color: '#1890ff' }} />
+                <span style={{ fontWeight: 'bold' }}>Alerts Summary</span>
+                <span style={{ 
+                  fontSize: '12px', 
+                  color: '#666', 
+                  fontWeight: 'normal',
+                  marginLeft: '8px'
+                }}>
+                  ({data.systemHealth.totalOpenAlerts} total alerts • {data.systemHealth.servicesWithIssues} services affected)
+                </span>
+              </div>
+            ),
+            children: (
+              <div>
+                {/* Alert Cards Row */}
+                <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                  <Col span={6}>
+                    <TotalOpenAlertsCard 
+                      value={data.systemHealth.totalOpenAlerts} 
+                      loading={data.loading}
+                      openCount={data.alertBreakdown.fatal.open + data.alertBreakdown.critical.open + data.alertBreakdown.warning.open}
+                      acknowledgedCount={data.alertBreakdown.fatal.acknowledged + data.alertBreakdown.critical.acknowledged + data.alertBreakdown.warning.acknowledged}
+                      showBreakdown={true}
+                    />
+                  </Col>
+                  <Col span={6}>
+                    <FatalAlertsCard 
+                      openCount={data.alertBreakdown.fatal.open}
+                      acknowledgedCount={data.alertBreakdown.fatal.acknowledged}
+                      loading={data.loading} 
+                    />
+                  </Col>
+                  <Col span={6}>
+                    <CriticalAlertsCard 
+                      openCount={data.alertBreakdown.critical.open}
+                      acknowledgedCount={data.alertBreakdown.critical.acknowledged}
+                      loading={data.loading} 
+                    />
+                  </Col>
+                  <Col span={6}>
+                    <WarningAlertsCard 
+                      openCount={data.alertBreakdown.warning.open}
+                      acknowledgedCount={data.alertBreakdown.warning.acknowledged}
+                      loading={data.loading} 
+                    />
+                  </Col>
+                </Row>
+
+                {/* Service Tables - Side by Side */}
+                <Row gutter={24}>
+                  <Col span={12}>
+                    <div style={{ marginBottom: '8px', fontWeight: 'bold', fontSize: '16px' }}>
+                      Alert Summary
+                    </div>
+                    <ServiceAlertSummaryTable 
+                      alerts={data.activeAlerts} 
+                      loading={data.loading} 
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ marginBottom: '8px', fontWeight: 'bold', fontSize: '16px' }}>
+                      Performance Metrics
+                    </div>
+                    <ServicePerformanceTable 
+                      serviceNodes={serviceMapData.nodes}
+                      loading={data.loading} 
+                    />
+                  </Col>
+                </Row>
+              </div>
+            ),
+          },
+        ]}
+        defaultActiveKey={['alerts-summary']}
         size="large"
         style={{ marginTop: '8px' }}
       />
