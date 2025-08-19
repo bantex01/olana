@@ -5,13 +5,10 @@ import {
   NodeIndexOutlined,
   AlertOutlined,
   BarChartOutlined,
-  SettingOutlined,
-  DatabaseOutlined
+  SettingOutlined
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
 import { FilteredDashboard } from './components/Dashboard/FilteredDashboard';
-import { DashboardClassic } from './components/Dashboard/DashboardHome';
-import { ServiceGraphPage } from './components/ServiceGraph/ServiceGraphPage';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
 import { ServicesPage } from './components/Services/ServicesPage';
 import { ServiceDetailPage } from './components/Services/ServiceDetailPage';
@@ -27,11 +24,6 @@ const menuItems = [
     key: 'home',
     icon: <HomeOutlined />,
     label: 'Mission Control',
-  },
-  {
-    key: 'dashboard-classic',
-    icon: <BarChartOutlined />,
-    label: 'Dashboard Classic',
   },
   {
     key: 'services',
@@ -55,11 +47,6 @@ const menuItems = [
         label: 'Health & Status',
       },
     ],
-  },
-  {
-    key: 'service-map',
-    icon: <DatabaseOutlined />,
-    label: 'Service Map',
   },
   {
     key: 'incidents',
@@ -145,8 +132,6 @@ const App: React.FC = () => {
     switch (selectedKey) {
       case 'home':
         return <FilteredDashboard onLastUpdatedChange={setDashboardLastUpdated} />;
-      case 'dashboard-classic':
-        return <DashboardClassic onLastUpdatedChange={setDashboardLastUpdated} />;
       case 'services-overview':
       case 'services-catalog':
       case 'services-dependencies':
@@ -155,8 +140,6 @@ const App: React.FC = () => {
           activeTab={selectedKey} 
           onServiceSelect={(namespace: string, name: string) => setServiceDetailParams({namespace, name})}
         />;
-      case 'service-map':
-        return <ServiceGraphPage />;
       case 'incidents':
         return <IncidentsPage />;
       case 'analytics':
