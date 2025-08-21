@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Row, Col, Card, Typography, Button, Modal } from 'antd';
 import { ExpandOutlined } from '@ant-design/icons';
-import { ServiceMap } from '../ServiceMap/ServiceMap';
+import { ServiceMapEasy } from '../ServiceMap';
 import { AlertTimeChart } from '../Dashboard/AlertTimeChart';
 import { ThemedExpandedAlerts } from './ThemedExpandedAlerts';
 import { ServiceDetailsPanel } from './ServiceDetailsPanel';
 import { useFilterState } from '../../hooks/useFilterState';
-import { useServiceMapData } from '../../hooks/useServiceMapData';
 import type { ServiceGroup } from '../../types';
 
 const { Title } = Typography;
@@ -18,89 +17,25 @@ interface RichServiceDrillDownProps {
 export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({ 
   serviceGroup
 }) => {
-  // Use global filter state (same as Mission Control)
-  const { state: filterState, actions: filterActions } = useFilterState();
+  // Use reusable filter state hook
+  const { state: filterState } = useFilterState();
   
-  // Use reusable service map data hook (EXACT same as Mission Control)
-  const { data, serviceMapData, fetchData, refreshData } = useServiceMapData();
-
-  // EXACT same fetch logic as Mission Control BUT scope to this service's namespace
-  const memoizedFetchData = useCallback(async () => {
-    // Extract namespace from serviceKey (format: "namespace::service")
-    const serviceNamespace = serviceGroup.serviceKey.split('::')[0];
-    
-    const filters = {
-      // ALWAYS include the service's namespace for proper contextual filtering
-      namespaces: [serviceNamespace],
-      severities: filterState.selectedSeverities.length > 0 ? filterState.selectedSeverities : undefined,
-      tags: filterState.selectedTags.length > 0 ? filterState.selectedTags : undefined,
-      search: filterState.searchTerm.trim() !== '' ? filterState.searchTerm.trim() : undefined,
-    };
-    const options = {
-      includeDependentNamespaces: filterState.includeDependentNamespaces,
-      showFullChain: filterState.showFullChain
-    };
-    
-    console.log('[RichServiceDrillDown] Fetching data with options:', options);
-    await fetchData(filters, options);
-  }, [
-    serviceGroup.serviceKey, // Add this since we're using it to extract namespace
-    filterState.selectedSeverities, 
-    filterState.selectedTags, 
-    filterState.searchTerm, 
-    filterState.includeDependentNamespaces, 
-    filterState.showFullChain,
-    fetchData
-  ]);
-
-  // Fetch data when filters change (EXACT same as Mission Control)
-  useEffect(() => {
-    memoizedFetchData();
-  }, [memoizedFetchData]);
-
-  // Filter to show only the target service and its dependencies (based on toggle settings)
-  const getFilteredServiceMapData = () => {
-    if (!serviceMapData || !serviceMapData.nodes || !serviceMapData.edges) {
-      console.warn('[RichServiceDrillDown] No serviceMapData available');
-      return { nodes: [], edges: [], alerts: [] };
-    }
-
-    const targetServiceId = serviceGroup.serviceKey;
-    
-    // If toggles are off, show only immediate dependencies (like before)
-    if (!filterState.includeDependentNamespaces && !filterState.showFullChain) {
-      const connectedNodeIds = new Set<string>();
-      connectedNodeIds.add(targetServiceId);
-      
-      const relevantEdges = serviceMapData.edges.filter(edge => 
-        edge.from === targetServiceId || edge.to === targetServiceId
-      );
-      
-      relevantEdges.forEach(edge => {
-        connectedNodeIds.add(edge.from);
-        connectedNodeIds.add(edge.to);
-      });
-      
-      const filteredNodes = serviceMapData.nodes.filter(node => 
-        connectedNodeIds.has(node.id)
-      );
-      
-      return {
-        nodes: filteredNodes,
-        edges: relevantEdges,
-        alerts: serviceMapData.allAlerts || []
-      };
-    }
-    
-    // If toggles are on, use the full API response (which already has the expanded data)
-    return {
-      nodes: serviceMapData.nodes,
-      edges: serviceMapData.edges,
-      alerts: serviceMapData.allAlerts || []
-    };
+  // Extract namespace from serviceKey (format: "namespace::service")
+  const serviceNamespace = serviceGroup.serviceKey.split('::')[0];
+  
+  // Build filters for ServiceMapEasy - scoped to this service's namespace
+  const serviceMapFilters = {
+    // ALWAYS filter to this service's namespace for contextual view
+    namespaces: [serviceNamespace],
+    severities: filterState.selectedSeverities.length > 0 ? filterState.selectedSeverities : undefined,
+    tags: filterState.selectedTags.length > 0 ? filterState.selectedTags : undefined,
+    search: filterState.searchTerm.trim() !== '' ? filterState.searchTerm.trim() : undefined,
   };
 
-  const { nodes: filteredNodes, edges: filteredEdges, alerts: filteredAlerts } = getFilteredServiceMapData();
+  // Handle toggle changes (ServiceMapEasy handles data fetching automatically)
+  const handleToggleChange = useCallback((_includeDependentNamespaces: boolean, _showFullChain: boolean) => {
+    // ServiceMapEasy automatically handles data fetching when toggles change
+  }, []);
 
   // State for service map modal
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
@@ -111,10 +46,8 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
       border: '1px solid var(--border)',
       borderTop: 'none',
       borderRadius: '0 0 6px 6px',
-      marginTop: '-1px',
-      padding: '20px'
+      padding: '16px'
     }}>
-      
       {/* Header */}
       <div style={{ marginBottom: '20px' }}>
         <Title level={4} style={{ 
@@ -146,7 +79,7 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
           </Card>
         </Col>
 
-        {/* Center Panel - Service Topology Map */}
+        {/* Center Panel - Service Dependencies Map */}
         <Col span={8}>
           <Card 
             title="Service Dependencies" 
@@ -168,15 +101,9 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
               </Button>
             }
           >
-            <ServiceMap
-              alerts={filteredAlerts}
-              nodes={filteredNodes}
-              edges={filteredEdges}
-              loading={data.loading}
-              totalServices={data.systemHealth.totalServices}
-              lastUpdated={new Date()}
-              includeDependentNamespaces={filterState.includeDependentNamespaces}
-              showFullChain={filterState.showFullChain}
+            {/* Using ServiceMapEasy instead of complex ServiceMap setup */}
+            <ServiceMapEasy
+              filters={serviceMapFilters}
               config={{
                 height: '320px',
                 showControls: false,
@@ -186,6 +113,7 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
                 enableRefresh: false,
                 defaultLayout: 'hierarchical'
               }}
+              onToggleChange={handleToggleChange}
             />
           </Card>
         </Col>
@@ -237,75 +165,36 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
         </Col>
       </Row>
 
-      {/* Full-Screen Service Map Modal */}
+      {/* Expanded Service Map Modal */}
       <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>Service Dependencies: {serviceGroup.serviceKey}</span>
-          </div>
-        }
+        title={`Service Dependencies: ${serviceGroup.serviceKey}`}
         open={isMapModalVisible}
         onCancel={() => setIsMapModalVisible(false)}
         footer={null}
-        width="100%"
-        style={{ 
-          top: 0,
-          maxWidth: 'none',
-          margin: 0,
-          padding: 0
-        }}
+        width="90%"
+        style={{ top: 20 }}
         styles={{
           body: {
-            height: 'calc(100vh - 55px)', // Full height minus modal title
-            padding: '8px',
-            backgroundColor: 'var(--bg-primary)'
+            height: '70vh',
+            padding: '16px'
           }
         }}
-        modalRender={(modal) => (
-          <div style={{
-            height: '100vh',
-            width: '100vw',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0
-          }}>
-            {modal}
-          </div>
-        )}
       >
-        <ServiceMap
-          alerts={filteredAlerts}
-          nodes={filteredNodes}
-          edges={filteredEdges}
-          loading={data.loading}
-          totalServices={data.systemHealth.totalServices}
-          lastUpdated={new Date()}
-          includeDependentNamespaces={filterState.includeDependentNamespaces}
-          showFullChain={filterState.showFullChain}
-          onIncludeDependentNamespacesChange={(value) => {
-            console.log('[RichServiceDrillDown] includeDependentNamespaces changed to:', value);
-            filterActions.setIncludeDependentNamespaces(value);
-          }}
-          onShowFullChainChange={(value) => {
-            console.log('[RichServiceDrillDown] showFullChain changed to:', value);
-            filterActions.setShowFullChain(value);
-          }}
-          onRefresh={refreshData}
+        {/* Same ServiceMapEasy component but full-screen */}
+        <ServiceMapEasy
+          filters={serviceMapFilters}
           config={{
-            height: 'calc(100vh - 110px)', // Full viewport minus modal header and some padding
+            height: 'calc(70vh - 60px)',
             showControls: true,
             showHeader: true,
             showLegend: true,
             enableFocusMode: true,
             enableRefresh: true,
-            enableAutoRefresh: false,
             defaultLayout: 'hierarchical'
           }}
+          onToggleChange={handleToggleChange}
         />
       </Modal>
-
     </div>
   );
 };

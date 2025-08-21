@@ -1,107 +1,186 @@
-# ServiceMap Component Usage Guide
+# ServiceMap Components
 
-## ✅ Plug-and-Play Usage (Recommended)
+This directory contains the unified service map implementation for the entire application.
 
-Use `ServiceMapWrapper` for new implementations - it handles all data correlation automatically:
+## 🎯 Quick Start
 
-```tsx
-import { ServiceMapWrapper } from '../ServiceMap/ServiceMapWrapper';
+**Use `ServiceMapEasy` everywhere** - it's the single, unified service map component for the entire app.
 
-// Simple usage - just pass raw data
-<ServiceMapWrapper
-  alerts={allAlerts}           // Raw alert array from API
-  nodes={rawNodes}            // Raw node array (no alertCount needed)
-  edges={edges}               // Edge connections
+```typescript
+import { ServiceMapEasy } from '../ServiceMap';
+
+// Minimal usage (all defaults)
+<ServiceMapEasy />
+
+// With filters and config
+<ServiceMapEasy
+  filters={{
+    namespaces: ['production', 'staging'],
+    severities: ['critical', 'fatal'],
+    search: 'api'
+  }}
   config={{
     height: '500px',
     showControls: true,
     showHeader: true,
     showLegend: true
   }}
+  onRefresh={() => console.log('Refreshed!')}
 />
 ```
 
-## ⚠️ Legacy Usage (Mission Control)
+## 📁 Architecture
 
-The original `ServiceMap` component requires pre-processed data:
+```
+ServiceMap/
+├── ServiceMapEasy.tsx    ← USE THIS EVERYWHERE (clean 2-5 prop interface)
+├── ServiceMap.tsx        ← Internal rendering engine (don't use directly)
+├── index.ts              ← Only exports ServiceMapEasy
+└── README.md             ← This file
+```
 
-```tsx
-import { ServiceMap } from '../ServiceMap/ServiceMap';
+## 🔧 ServiceMapEasy Props
 
-// Requires nodes with alertCount/highestSeverity already set
-<ServiceMap
-  alerts={allAlerts}
-  nodes={nodesWithAlertCorrelation}  // Must have alertCount/highestSeverity
-  edges={edges}
-  loading={loading}
-  totalServices={totalServices}
-  lastUpdated={new Date()}
-  includeDependentNamespaces={includeDependentNamespaces}
-  showFullChain={showFullChain}
-  onIncludeDependentNamespacesChange={setIncludeDependentNamespaces}
-  onShowFullChainChange={setShowFullChain}
-  onRefresh={refreshData}
-  config={{...}}
+### `filters?` (optional)
+```typescript
+{
+  namespaces?: string[];   // Filter to specific namespaces
+  severities?: string[];   // Filter by alert severity: 'fatal', 'critical', 'warning'
+  tags?: string[];         // Filter by alert tags
+  search?: string;         // Search term for services/alerts
+}
+```
+
+### `config?` (optional)
+```typescript
+{
+  height?: string;                              // Default: '400px'
+  showControls?: boolean;                       // Default: true
+  showHeader?: boolean;                         // Default: true
+  showLegend?: boolean;                         // Default: true
+  enableFocusMode?: boolean;                    // Default: true
+  enableRefresh?: boolean;                      // Default: true
+  enableAutoRefresh?: boolean;                  // Default: false
+  defaultLayout?: 'hierarchical' | 'static';   // Default: 'hierarchical'
+  defaultIncludeDependentNamespaces?: boolean;  // Default: false
+  defaultShowFullChain?: boolean;               // Default: false
+}
+```
+
+### `onRefresh?` (optional)
+```typescript
+() => void  // Called when map is refreshed
+```
+
+### `onToggleChange?` (optional)
+```typescript
+(includeDependentNamespaces: boolean, showFullChain: boolean) => void
+// Called when user changes map view toggles
+```
+
+## 📋 Usage Examples
+
+### Mission Control Dashboard
+```typescript
+<ServiceMapEasy
+  filters={filterState}
+  config={{
+    height: '500px',
+    showControls: true,
+    showHeader: true,
+    showLegend: true,
+    enableFocusMode: true,
+    enableRefresh: true,
+    enableAutoRefresh: true,
+    defaultLayout: 'static'
+  }}
+  onRefresh={handleRefresh}
+  onToggleChange={handleToggleChange}
 />
 ```
 
-## 🔧 Required Data Structures
-
-### Alert Structure
+### Service Health Page
 ```typescript
-type Alert = {
-  service_namespace: string;  // Used for node correlation
-  service_name: string;       // Used for node correlation  
-  severity: 'fatal' | 'critical' | 'warning' | 'none';
-  // ... other properties
-}
+// Just use defaults - ServiceMapEasy handles everything
+<ServiceMapEasy />
 ```
 
-### Node Structure
+### Service Drill-Down (scoped to one service)
 ```typescript
-type Node = {
-  id: string;                 // Must match "${service_namespace}::${service_name}"
-  label: string;
-  nodeType: 'service' | 'namespace';
-  // ServiceMapWrapper auto-adds these:
-  alertCount?: number;        // Auto-computed from alerts
-  highestSeverity?: string;   // Auto-computed from alerts
-  // ... other properties
-}
+<ServiceMapEasy
+  filters={{
+    namespaces: [serviceNamespace]  // Show only this service's namespace
+  }}
+  config={{
+    height: '320px',
+    showControls: false,
+    showHeader: false,
+    showLegend: false,
+    defaultLayout: 'hierarchical'
+  }}
+/>
 ```
 
-## 🚀 Migration Guide
+### Compact Widget
+```typescript
+<ServiceMapEasy
+  config={{
+    height: '200px',
+    showControls: false,
+    showHeader: false
+  }}
+/>
+```
 
-**From ServiceMap to ServiceMapWrapper:**
-1. Replace `ServiceMap` import with `ServiceMapWrapper`
-2. Remove any manual `alertCount`/`highestSeverity` computation
-3. Pass raw nodes and alerts - wrapper handles correlation
-4. Keep all other props the same
+## 🏗️ How It Works
 
-**Benefits:**
-- ✅ Truly plug-and-play
-- ✅ Automatic alert correlation
-- ✅ No hidden data dependencies
-- ✅ Works anywhere with any data
-- ✅ Built-in debugging for development
+1. **ServiceMapEasy** provides a clean interface (2-5 props vs old 17+ props)
+2. **Internally uses proven hooks**: `useServiceMapData` + `useFilterState`
+3. **Passes data to ServiceMap**: The complex vis-network rendering engine
+4. **Automatic data fetching**: No manual hook management needed
 
-## 🐛 Troubleshooting
+## ✅ Migration from Old Patterns
 
-**If nodes don't pulse:**
-1. Check browser console for `[ServiceMapWrapper]` debug logs
-2. Verify node IDs match `${alert.service_namespace}::${alert.service_name}`
-3. Ensure alerts array contains expected data structure
-4. Verify nodes have `nodeType: 'service'`
+**❌ Old way (complex)**:
+```typescript
+// DON'T DO THIS ANYMORE
+const { state, actions } = useFilterState();
+const { data, serviceMapData, fetchData } = useServiceMapData();
+// ... 20+ lines of useEffect and callback setup
+<ServiceMap 
+  alerts={serviceMapData.allAlerts}
+  nodes={serviceMapData.nodes}
+  edges={serviceMapData.edges}
+  loading={data.loading}
+  totalServices={data.systemHealth.totalServices}
+  // ... 12+ more props
+/>
+```
 
-**If modal/sizing issues:**
-1. Use proper height values (`'500px'`, `'100%'`, `calc(100vh - 100px)`)
-2. Ensure parent container has defined height
-3. Check for CSS conflicts with positioning
+**✅ New way (clean)**:
+```typescript
+// DO THIS INSTEAD
+<ServiceMapEasy 
+  filters={{ namespaces: ['production'] }}
+  config={{ height: '500px' }}
+/>
+```
 
-## ✅ Current Implementation Status
+## 🎯 Design Principles
 
-- **Mission Control**: Uses legacy `ServiceMap` (works due to backend correlation)
-- **Service Health Drill-down**: Uses new `ServiceMapWrapper` (fully plug-and-play)
-- **Future implementations**: Should use `ServiceMapWrapper`
+- **One component to rule them all**: ServiceMapEasy is used everywhere
+- **Simple interface**: 2-5 props maximum, sensible defaults
+- **Reuses proven logic**: Same hooks and patterns as Mission Control
+- **Internal complexity hidden**: ServiceMap.tsx handles vis-network complexity
+- **Consistent behavior**: Same alerts, same styling, same interactions everywhere
 
-This ensures consistent behavior and eliminates the integration complexity we experienced.
+## 🔍 Current Usage
+
+- ✅ Mission Control dashboard
+- ✅ Service Health page  
+- ✅ Service drill-down modals
+- ✅ Rich service detail views
+
+---
+
+**💡 Remember**: Always use `ServiceMapEasy` - never import `ServiceMap` directly!

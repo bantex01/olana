@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, Space } from 'antd';
+import { Tag, Space, theme } from 'antd';
 import { AlertOutlined, ClockCircleOutlined, NumberOutlined, DownOutlined, RightOutlined } from '@ant-design/icons';
 import type { ServiceGroup } from '../../types';
 
@@ -14,6 +14,17 @@ export const ThemedServiceRow: React.FC<ThemedServiceRowProps> = ({
   isExpanded, 
   onToggleExpand 
 }) => {
+  // Get theme token to detect dark mode
+  const { token } = theme.useToken();
+  
+  // Detect if we're in dark mode
+  const isDarkMode = token.colorBgContainer && (
+    token.colorBgContainer.includes('#1') || 
+    token.colorBgContainer.includes('#0') ||
+    token.colorBgContainer === 'rgb(20, 20, 20)' ||
+    parseInt(token.colorBgContainer.replace('#', ''), 16) < 0x808080
+  );
+
   // Get severity color and styling (keep severity colors consistent)
   const getSeverityStyle = (severity: string) => {
     switch (severity.toLowerCase()) {
@@ -21,7 +32,8 @@ export const ThemedServiceRow: React.FC<ThemedServiceRowProps> = ({
         return { 
           color: 'white', 
           backgroundColor: 'black',
-          borderColor: 'black'
+          // Use purple border for fatal in dark mode for visibility
+          borderColor: isDarkMode ? '#a855f7' : 'black'
         };
       case 'critical':
         return { 

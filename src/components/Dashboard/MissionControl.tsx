@@ -6,7 +6,7 @@ import {
   AlertOutlined
 } from '@ant-design/icons';
 import { AlertsFilters } from '../Incidents/AlertsFilters';
-import { ServiceMap } from '../ServiceMap';
+import { ServiceMapEasy } from '../ServiceMap';
 import { AlertTimeChart } from './AlertTimeChart';
 import { useFilterState } from '../../hooks/useFilterState';
 import { useServiceMapData } from '../../hooks/useServiceMapData';
@@ -32,39 +32,18 @@ import { ServicePerformanceTable } from '../Common/ServicePerformanceTable';
 import { RecentDeploymentsTable } from '../Common/RecentDeploymentsTable';
 
 
-
-interface FilteredDashboardProps {
+interface MissionControlProps {
   onLastUpdatedChange: (date: Date) => void;
 }
 
-export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpdatedChange }) => {
+export const MissionControl: React.FC<MissionControlProps> = ({ onLastUpdatedChange }) => {
   // Use reusable filter state hook
   const { state: filterState, actions: filterActions, helpers: filterHelpers } = useFilterState();
   
-  // Use reusable service map data hook
-  const { data, serviceMapData, fetchData, refreshData } = useServiceMapData();
+  // Use reusable service map data hook (for accessing system stats)
+  const { data, serviceMapData, fetchData } = useServiceMapData();
 
-
-
-
-
-  // Fetch data using the reusable hook
-  const handleFetchData = async () => {
-    const filters = filterHelpers.buildGraphFilters();
-    const options = {
-      includeDependentNamespaces: filterState.includeDependentNamespaces,
-      showFullChain: filterState.showFullChain
-    };
-    
-    await fetchData(filters, options);
-    
-    // Update last updated timestamp
-    const now = new Date();
-    onLastUpdatedChange(now);
-  };
-
-
-  // Memoize the fetch function to prevent infinite loops
+  // Memoize the fetch function to prevent infinite loops (EXACTLY like original)
   const memoizedFetchData = useCallback(async () => {
     const filters = {
       namespaces: filterState.selectedNamespaces.length > 0 ? filterState.selectedNamespaces : undefined,
@@ -93,10 +72,28 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
     onLastUpdatedChange
   ]);
 
-  // Fetch data when filters change
+  // Fetch data when filters change (EXACTLY like original)
   useEffect(() => {
     memoizedFetchData();
   }, [memoizedFetchData]);
+
+  // Handle refresh callback
+  const handleRefresh = useCallback(async () => {
+    await memoizedFetchData();
+  }, [memoizedFetchData]);
+
+  // Handle toggle changes from ServiceMap
+  const handleToggleChange = useCallback((_includeDependentNamespaces: boolean, _showFullChain: boolean) => {
+    // ServiceMapEasy handles the data fetching automatically, no manual sync needed
+  }, []);
+
+  // Build filters for ServiceMapEasy (exactly like original Mission Control)
+  const filters = {
+    namespaces: filterState.selectedNamespaces.length > 0 ? filterState.selectedNamespaces : undefined,
+    severities: filterState.selectedSeverities.length > 0 ? filterState.selectedSeverities : undefined,
+    tags: filterState.selectedTags.length > 0 ? filterState.selectedTags : undefined,
+    search: filterState.searchTerm.trim() !== '' ? filterState.searchTerm.trim() : undefined,
+  };
 
   if (data.error) {
     return (
@@ -106,7 +103,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         type="error"
         showIcon
         action={
-          <button onClick={handleFetchData}>Retry</button>
+          <button onClick={handleRefresh}>Retry</button>
         }
       />
     );
@@ -114,7 +111,8 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
 
   return (
     <div>
-      {/* Filters - Collapsible at top */}
+
+      {/* Filters - Collapsible at top (EXACTLY like original) */}
       <Collapse
         items={[
           {
@@ -155,7 +153,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         style={{ marginBottom: '24px' }}
       />
 
-      {/* System Overview Cards underneath filters */}
+      {/* System Overview Cards underneath filters (EXACTLY like original) */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
           <TotalServicesCard 
@@ -183,7 +181,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         </Col>
       </Row>
 
-      {/* Performance Metrics Cards */}
+      {/* Performance Metrics Cards (EXACTLY like original) */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
           <MTTACard 
@@ -215,7 +213,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         </Col>
       </Row>
 
-      {/* Deployment & Events Cards */}
+      {/* Deployment & Events Cards (EXACTLY like original) */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
           <DeploymentsLast24hCard 
@@ -247,7 +245,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         </Col>
       </Row>
 
-      {/* Recent Deployments Table */}
+      {/* Recent Deployments Table (EXACTLY like original) */}
       <div style={{ marginBottom: 24 }}>
         <RecentDeploymentsTable 
           loading={data.loading} 
@@ -255,14 +253,10 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         />
       </div>
 
-      {/* Alert Timeline Chart - Choose version */}
-      {/* Original SVG version (fixed aspect ratio): */}
+      {/* Alert Timeline Chart (EXACTLY like original) */}
       <AlertTimeChart loading={data.loading} />
       
-      {/* Alternative Recharts version (recommended): */}
-      {/* <AlertTimeChartRecharts loading={data.loading} /> */}
-
-      {/* Enhanced Service Map - Collapsible */}
+      {/* Enhanced Service Map - Using ServiceMapEasy (REPLACES original complex setup) */}
       <Collapse
         items={[
           {
@@ -282,28 +276,21 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
               </div>
             ),
             children: (
-              <ServiceMap
-                alerts={serviceMapData.allAlerts}
-                nodes={serviceMapData.nodes}
-                edges={serviceMapData.edges}
-                loading={data.loading}
-                totalServices={data.systemHealth.totalServices}
-                lastUpdated={new Date()}
-                includeDependentNamespaces={filterState.includeDependentNamespaces}
-                showFullChain={filterState.showFullChain}
-                onRefresh={refreshData}
-                onIncludeDependentNamespacesChange={filterActions.setIncludeDependentNamespaces}
-                onShowFullChainChange={filterActions.setShowFullChain}
-                config={{
-                  height: '500px',
-                  showControls: true,
-                  showHeader: true,
-                  showLegend: true,
-                  enableFocusMode: true,
-                  enableRefresh: true,
-                  enableAutoRefresh: true
-                }}
-              />
+              <ServiceMapEasy
+                  filters={filters}
+                  config={{
+                    height: '500px',
+                    showControls: true,
+                    showHeader: true,
+                    showLegend: true,
+                    enableFocusMode: true,
+                    enableRefresh: true,
+                    enableAutoRefresh: true,
+                    defaultLayout: 'static'
+                  }}
+                  onRefresh={handleRefresh}
+                  onToggleChange={handleToggleChange}
+                />
             ),
           },
         ]}
@@ -312,7 +299,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
         style={{ marginTop: '8px' }}
       />
 
-      {/* Alerts Summary Section - Collapsible */}
+      {/* Alerts Summary Section - Collapsible (EXACTLY like original) */}
       <Collapse
         items={[
           {
@@ -333,7 +320,7 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
             ),
             children: (
               <div>
-                {/* Alert Cards Row */}
+                {/* Alert Cards Row (EXACTLY like original) */}
                 <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
                   <Col span={6}>
                     <TotalOpenAlertsCard 
@@ -348,26 +335,26 @@ export const FilteredDashboard: React.FC<FilteredDashboardProps> = ({ onLastUpda
                     <FatalAlertsCard 
                       openCount={data.alertBreakdown.fatal.open}
                       acknowledgedCount={data.alertBreakdown.fatal.acknowledged}
-                      loading={data.loading} 
+                      loading={data.loading}
                     />
                   </Col>
                   <Col span={6}>
                     <CriticalAlertsCard 
                       openCount={data.alertBreakdown.critical.open}
                       acknowledgedCount={data.alertBreakdown.critical.acknowledged}
-                      loading={data.loading} 
+                      loading={data.loading}
                     />
                   </Col>
                   <Col span={6}>
                     <WarningAlertsCard 
                       openCount={data.alertBreakdown.warning.open}
                       acknowledgedCount={data.alertBreakdown.warning.acknowledged}
-                      loading={data.loading} 
+                      loading={data.loading}
                     />
                   </Col>
                 </Row>
 
-                {/* Service Tables - Side by Side */}
+                {/* Service Tables - Side by Side (EXACTLY like original) */}
                 <Row gutter={24}>
                   <Col span={12}>
                     <div style={{ marginBottom: '8px', fontWeight: 'bold', fontSize: '16px' }}>

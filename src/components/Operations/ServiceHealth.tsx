@@ -19,7 +19,8 @@ import {
   MTTRCard
 } from '../Cards';
 
-export const ServiceHealthPage: React.FC = () => {
+
+export const ServiceHealth: React.FC = () => {
   // Use reusable filter state hook
   const { state: filterState, actions: filterActions, helpers: filterHelpers } = useFilterState();
   
@@ -102,9 +103,6 @@ export const ServiceHealthPage: React.FC = () => {
 
   const metrics = calculateMetrics();
 
-  // The drill-down components now use global filter state directly
-  // No need for handleFetchGraphData - toggles work through global state
-
   if (data.error || servicesError) {
     return (
       <Alert
@@ -121,6 +119,7 @@ export const ServiceHealthPage: React.FC = () => {
 
   return (
     <div>
+
       {/* Filters - Collapsible at top */}
       <Collapse
         items={[
@@ -230,6 +229,7 @@ export const ServiceHealthPage: React.FC = () => {
           />
         </Col>
       </Row>
+
 
       {/* Arrangement and Sorting Controls */}
       <div style={{

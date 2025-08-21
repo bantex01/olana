@@ -8,11 +8,10 @@ import {
   SettingOutlined
 } from '@ant-design/icons';
 import 'antd/dist/reset.css';
-import { FilteredDashboard } from './components/Dashboard/FilteredDashboard';
-import { IncidentsPage } from './components/Incidents/IncidentsPage';
 import { ServicesPage } from './components/Services/ServicesPage';
 import { ServiceDetailPage } from './components/Services/ServiceDetailPage';
-import { ServiceHealthPage } from './components/Operations/ServiceHealthPage';
+import { ServiceHealth } from './components/Operations/ServiceHealth';
+import { MissionControl } from './components/Dashboard/MissionControl';
 import { ThemeToggle } from './components/Common/ThemeToggle';
 
 
@@ -25,6 +24,17 @@ const menuItems = [
     key: 'home',
     icon: <HomeOutlined />,
     label: 'Mission Control',
+  },
+  {
+    key: 'operations',
+    icon: <AlertOutlined />,
+    label: 'Operations',
+    children: [
+      {
+        key: 'operations-service-health',
+        label: 'Service Health',
+      },
+    ],
   },
   {
     key: 'services',
@@ -50,22 +60,6 @@ const menuItems = [
     ],
   },
   {
-    key: 'operations',
-    icon: <AlertOutlined />,
-    label: 'Operations',
-    children: [
-      {
-        key: 'operations-service-health',
-        label: 'Service Health',
-      },
-    ],
-  },
-  {
-    key: 'incidents',
-    icon: <AlertOutlined />,
-    label: 'Incidents',
-  },
-  {
     key: 'analytics',
     icon: <BarChartOutlined />,
     label: 'Analytics',
@@ -84,7 +78,7 @@ const App: React.FC = () => {
   const [, setDashboardLastUpdated] = useState<Date | null>(null);
   
   const {
-    token: { colorBgContainer, borderRadiusLG, colorPrimary },
+    token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
 
   // Detect if we're in dark mode - check for dark background colors
@@ -95,19 +89,30 @@ const App: React.FC = () => {
     parseInt(colorBgContainer.replace('#', ''), 16) < 0x808080
   );
   
-  console.log('Theme debug:', { 
-    colorBgContainer, 
-    colorPrimary,
-    isDarkMode 
-  });
 
   // Get page title based on selected menu
   const getPageTitle = (key: string) => {
     if (serviceDetailParams) {
       return `${serviceDetailParams.namespace}/${serviceDetailParams.name}`;
     }
-    const item = menuItems.find(item => item.key === key);
-    return item?.label || 'Mission Control';
+    
+    // First check top-level items
+    const topLevelItem = menuItems.find(item => item.key === key);
+    if (topLevelItem) {
+      return topLevelItem.label;
+    }
+    
+    // Then check nested items
+    for (const item of menuItems) {
+      if (item.children) {
+        const childItem = item.children.find(child => child.key === key);
+        if (childItem) {
+          return childItem.label;
+        }
+      }
+    }
+    
+    return 'Mission Control';
   };
 
 
@@ -143,7 +148,7 @@ const App: React.FC = () => {
 
     switch (selectedKey) {
       case 'home':
-        return <FilteredDashboard onLastUpdatedChange={setDashboardLastUpdated} />;
+        return <MissionControl onLastUpdatedChange={setDashboardLastUpdated} />;
       case 'services-overview':
       case 'services-catalog':
       case 'services-dependencies':
@@ -153,15 +158,13 @@ const App: React.FC = () => {
           onServiceSelect={(namespace: string, name: string) => setServiceDetailParams({namespace, name})}
         />;
       case 'operations-service-health':
-        return <ServiceHealthPage />;
-      case 'incidents':
-        return <IncidentsPage />;
+        return <ServiceHealth />;
       case 'analytics':
         return <div>Analytics page (coming soon)</div>;
       case 'admin':
         return <div>Admin page (coming soon)</div>;
       default:
-        return <FilteredDashboard onLastUpdatedChange={setDashboardLastUpdated} />;
+        return <MissionControl onLastUpdatedChange={setDashboardLastUpdated} />;
     }
   };
 
