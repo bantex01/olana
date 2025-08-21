@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '../utils/api';
 import { logger } from '../utils/logger';
 import type { GraphFilters, Node } from '../types';
+import type { ArrangementOption, SortConfig, SortOption } from '../components/Controls';
 
 export interface FilterState {
   selectedSeverities: string[];
@@ -12,6 +13,8 @@ export interface FilterState {
   availableTags: string[];
   includeDependentNamespaces: boolean;
   showFullChain: boolean;
+  arrangement: ArrangementOption;
+  sortConfig: SortConfig;
 }
 
 export interface FilterActions {
@@ -22,6 +25,8 @@ export interface FilterActions {
   handleClearAll: () => void;
   setIncludeDependentNamespaces: (value: boolean) => void;
   setShowFullChain: (value: boolean) => void;
+  handleArrangementChange: (arrangement: ArrangementOption) => void;
+  handleSortChange: (field: SortOption) => void;
 }
 
 export interface FilterHelpers {
@@ -46,6 +51,8 @@ export const useFilterState = (): UseFilterStateReturn => {
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [includeDependentNamespaces, setIncludeDependentNamespaces] = useState<boolean>(false);
   const [showFullChain, setShowFullChain] = useState<boolean>(false);
+  const [arrangement, setArrangement] = useState<ArrangementOption>('service');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'severity', direction: 'asc' });
 
   // Fetch available namespaces for filter dropdown
   const fetchAvailableNamespaces = useCallback(async () => {
@@ -104,6 +111,18 @@ export const useFilterState = (): UseFilterStateReturn => {
     setSearchTerm('');
     setIncludeDependentNamespaces(false);
     setShowFullChain(false);
+    // Don't reset arrangement and sort config on clear - these are user preferences
+  }, []);
+
+  const handleArrangementChange = useCallback((newArrangement: ArrangementOption) => {
+    setArrangement(newArrangement);
+  }, []);
+
+  const handleSortChange = useCallback((field: SortOption) => {
+    setSortConfig(prevConfig => {
+      const newDirection = prevConfig.field === field && prevConfig.direction === 'asc' ? 'desc' : 'asc';
+      return { field, direction: newDirection };
+    });
   }, []);
 
   // Helper functions
@@ -137,6 +156,8 @@ export const useFilterState = (): UseFilterStateReturn => {
       availableTags,
       includeDependentNamespaces,
       showFullChain,
+      arrangement,
+      sortConfig,
     },
     actions: {
       handleSeverityChange,
@@ -146,6 +167,8 @@ export const useFilterState = (): UseFilterStateReturn => {
       handleClearAll,
       setIncludeDependentNamespaces,
       setShowFullChain,
+      handleArrangementChange,
+      handleSortChange,
     },
     helpers: {
       buildGraphFilters,
