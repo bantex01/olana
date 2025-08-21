@@ -120,35 +120,23 @@ npm run db:migrate:prod
 - **Health Monitoring**: Automated health checks with alerting capability
 - **Error Handling**: Structured error responses with correlation IDs
 
-# Reusable Service Map & Filter Components
+# Unified Service Map Component
 
-When creating new pages that need service maps and/or filtering capabilities, use these standardized patterns:
+When creating new pages that need service maps, use the simplified **ServiceMapEasy** component - the single, unified service map implementation throughout the app.
 
-## Quick Setup for Service Map + Filters
+## ⚡ Quick Setup with ServiceMapEasy
 
   ```typescript
-  import { useFilterState } from '../../hooks/useFilterState';
-  import { useServiceMapData } from '../../hooks/useServiceMapData';
+  import { ServiceMapEasy } from '../ServiceMap';
   import { AlertsFilters } from '../Incidents/AlertsFilters';
-  import { ServiceMap } from '../ServiceMap';
+  import { useFilterState } from '../../hooks/useFilterState';
 
   const MyNewPage = () => {
-    const { state, actions, helpers } = useFilterState();
-    const { data, serviceMapData, fetchData } = useServiceMapData();
-
-    // Fetch data when filters change
-    useEffect(() => {
-      const filters = helpers.buildGraphFilters();
-      const options = {
-        includeDependentNamespaces: state.includeDependentNamespaces,
-        showFullChain: state.showFullChain
-      };
-      fetchData(filters, options);
-    }, [state.selectedNamespaces, state.selectedSeverities, state.selectedTags, state.searchTerm]);
+    const { state, actions } = useFilterState();
 
     return (
       <div>
-        {/* Filters */}
+        {/* Filters (optional - can be separate or combined) */}
         <AlertsFilters
           selectedSeverities={state.selectedSeverities}
           selectedNamespaces={state.selectedNamespaces}
@@ -163,13 +151,14 @@ When creating new pages that need service maps and/or filtering capabilities, us
           onClearAll={actions.handleClearAll}
         />
 
-        {/* Service Map */}
-        <ServiceMap
-          alerts={serviceMapData.allAlerts}
-          nodes={serviceMapData.nodes}
-          edges={serviceMapData.edges}
-          loading={data.loading}
-          totalServices={data.systemHealth.totalServices}
+        {/* Service Map - SIMPLIFIED! */}
+        <ServiceMapEasy
+          filters={{
+            namespaces: state.selectedNamespaces,
+            severities: state.selectedSeverities,
+            tags: state.selectedTags,
+            search: state.searchTerm
+          }}
           config={{
             height: '500px',
             showControls: true,
@@ -180,15 +169,34 @@ When creating new pages that need service maps and/or filtering capabilities, us
       </div>
     );
   };
+  ```
 
-  Architecture Notes
+  ## 🎯 Even Simpler - Minimal Usage
 
-  - useFilterState: Manages all filter state and provides clean handlers
-  - useServiceMapData: Handles data fetching with filtering support
-  - ServiceMap: Configurable component that can be embedded anywhere
-  - AlertsFilters: Reusable filter UI component
+  ```typescript
+  import { ServiceMapEasy } from '../ServiceMap';
 
-  This pattern ensures consistency and makes adding service maps to new pages trivial.
+  const MySimplePage = () => {
+    return (
+      <div>
+        {/* Just drop it in - handles everything automatically */}
+        <ServiceMapEasy />
+      </div>
+    );
+  };
+  ```
+
+  ## ✨ Architecture Notes
+
+  - **ServiceMapEasy**: Single unified component - handles all data fetching, state management, and rendering
+  - **No manual hooks needed**: Component handles useServiceMapData and useFilterState internally  
+  - **2-5 props maximum**: Simple interface vs old 17+ prop complexity
+  - **AlertsFilters**: Still available as separate component for complex filtering UIs
+  - **Consistent behavior**: Same alerts, styling, and interactions everywhere
+
+  **📖 Full documentation**: See `src/components/ServiceMap/README.md` for complete usage guide and examples.
+
+  This pattern makes adding service maps to new pages trivial - just import and use ServiceMapEasy!
 
 ## Agents and experts
 You have the following experts and agents available to you that you should use/consult with:
