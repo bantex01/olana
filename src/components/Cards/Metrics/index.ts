@@ -2,6 +2,8 @@ export { TotalServicesCard } from './TotalServicesCard';
 export { ServicesWithIssuesCard } from './ServicesWithIssuesCard';
 export { OpenAlertsLast24hCard } from './OpenAlertsLast24hCard';
 export { TotalOpenAlertsCard } from './TotalOpenAlertsCard';
+export { UnacknowledgedAlertsCard } from './UnacknowledgedAlertsCard';
+export { TotalDurationOpenCard } from './TotalDurationOpenCard';
 export { FatalAlertsCard } from './FatalAlertsCard';
 export { CriticalAlertsCard } from './CriticalAlertsCard';
 export { WarningAlertsCard } from './WarningAlertsCard';

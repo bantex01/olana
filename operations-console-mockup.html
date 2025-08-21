@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operations Console - Mockup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: #001529;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status-healthy { background: rgba(82, 196, 26, 0.2); color: #52c41a; }
+        .status-degraded { background: rgba(250, 140, 22, 0.2); color: #fa8c16; }
+        .status-critical { background: rgba(255, 77, 79, 0.2); color: #ff4d4f; }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Executive Summary */
+        .executive-summary {
+            background: white;
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .metric-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .metric-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .metric-content h3 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .metric-content p {
+            font-size: 14px;
+            color: #8c8c8c;
+        }
+
+        /* Main Workspace */
+        .main-workspace {
+            display: flex;
+            height: calc(100vh - 120px);
+        }
+
+        /* Triage Panel */
+        .triage-panel {
+            width: 380px;
+            background: white;
+            border-right: 1px solid #f0f0f0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fafafa;
+        }
+
+        .panel-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .alert-filters {
+            padding: 16px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter-tag {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            border: 1px solid #d9d9d9;
+        }
+
+        .filter-tag.active {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+
+        .alert-queue {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .alert-card {
+            background: white;
+            border: 1px solid #f0f0f0;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .alert-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-color: #d9d9d9;
+        }
+
+        .alert-card.selected {
+            border-color: #1890ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+
+        .alert-card.p0 {
+            border-left: 4px solid #ff4d4f;
+            animation: pulse-border 2s infinite;
+        }
+
+        .alert-card.p1 {
+            border-left: 4px solid #fa8c16;
+        }
+
+        .alert-card.p2 {
+            border-left: 4px solid #faad14;
+        }
+
+        @keyframes pulse-border {
+            0% { border-left-color: #ff4d4f; }
+            50% { border-left-color: #ff7875; }
+            100% { border-left-color: #ff4d4f; }
+        }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .alert-priority {
+            background: #ff4d4f;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .alert-priority.p1 { background: #fa8c16; }
+        .alert-priority.p2 { background: #faad14; }
+
+        .alert-service {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .alert-message {
+            font-size: 13px;
+            color: #595959;
+            margin-bottom: 8px;
+        }
+
+        .alert-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #8c8c8c;
+        }
+
+        .blast-radius {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Service Graph */
+        .service-graph {
+            flex: 1;
+            background: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .graph-container {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, #f0f2f5 25%, transparent 25%), 
+                        linear-gradient(-45deg, #f0f2f5 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #f0f2f5 75%), 
+                        linear-gradient(-45deg, transparent 75%, #f0f2f5 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            position: relative;
+        }
+
+        .service-node {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 3px solid transparent;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .service-node:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+
+        .service-node.healthy {
+            border-color: #52c41a;
+            background: rgba(82, 196, 26, 0.1);
+        }
+
+        .service-node.warning {
+            border-color: #faad14;
+            background: rgba(250, 173, 20, 0.1);
+        }
+
+        .service-node.critical {
+            border-color: #ff4d4f;
+            background: rgba(255, 77, 79, 0.1);
+            animation: pulse-node 1.5s infinite;
+        }
+
+        .service-node.selected {
+            border-color: #1890ff;
+            background: rgba(24, 144, 255, 0.1);
+            transform: scale(1.15);
+        }
+
+        @keyframes pulse-node {
+            0% { box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 0 rgba(255, 77, 79, 0.4); }
+            50% { box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 10px rgba(255, 77, 79, 0); }
+            100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 0 rgba(255, 77, 79, 0); }
+        }
+
+        .service-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .dependency-line {
+            position: absolute;
+            height: 2px;
+            background: #d9d9d9;
+            transform-origin: left center;
+        }
+
+        .dependency-line.active {
+            background: #1890ff;
+            height: 3px;
+            animation: flow 2s linear infinite;
+        }
+
+        @keyframes flow {
+            0% { background-position: 0 0; }
+            100% { background-position: 20px 0; }
+        }
+
+        .graph-controls {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .graph-control {
+            width: 40px;
+            height: 40px;
+            background: white;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .graph-control:hover {
+            border-color: #1890ff;
+            color: #1890ff;
+        }
+
+        /* Details Panel */
+        .details-panel {
+            width: 420px;
+            background: white;
+            border-left: 1px solid #f0f0f0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .alert-details {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .detail-section {
+            padding: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .detail-section h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #262626;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .detail-label {
+            color: #8c8c8c;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: #262626;
+            font-weight: 500;
+        }
+
+        .action-buttons {
+            padding: 20px;
+            display: flex;
+            gap: 12px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #d9d9d9;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+        }
+
+        .btn-primary:hover {
+            background: #40a9ff;
+        }
+
+        .btn:hover {
+            border-color: #1890ff;
+            color: #1890ff;
+        }
+
+        .impact-visualization {
+            background: #f9f9f9;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+
+        .impact-services {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .impact-service {
+            padding: 4px 8px;
+            background: white;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .impact-service.affected {
+            border-color: #ff4d4f;
+            color: #ff4d4f;
+        }
+
+        /* Timeline */
+        .timeline {
+            margin-top: 12px;
+        }
+
+        .timeline-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .timeline-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .timeline-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #d9d9d9;
+            margin-top: 6px;
+            flex-shrink: 0;
+        }
+
+        .timeline-dot.critical { background: #ff4d4f; }
+        .timeline-dot.warning { background: #faad14; }
+        .timeline-dot.resolved { background: #52c41a; }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .timeline-time {
+            font-size: 12px;
+            color: #8c8c8c;
+            margin-bottom: 2px;
+        }
+
+        .timeline-event {
+            font-size: 13px;
+            color: #262626;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <h1>🎯 Operations Console</h1>
+        <div class="system-status">
+            <div class="status-indicator status-degraded">
+                <div class="status-dot" style="background: #fa8c16;"></div>
+                System: Degraded
+            </div>
+            <div style="font-size: 14px; color: #bfbfbf;">
+                Last Updated: 14:23:45 | Auto-refresh: 30s
+            </div>
+        </div>
+    </div>
+
+    <!-- Executive Summary -->
+    <div class="executive-summary">
+        <div class="metric-card">
+            <div class="metric-icon" style="background: rgba(255, 77, 79, 0.1); color: #ff4d4f;">
+                🚨
+            </div>
+            <div class="metric-content">
+                <h3>3</h3>
+                <p>Critical Alerts</p>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-icon" style="background: rgba(250, 140, 22, 0.1); color: #fa8c16;">
+                ⚠️
+            </div>
+            <div class="metric-content">
+                <h3>12</h3>
+                <p>Services Affected</p>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-icon" style="background: rgba(24, 144, 255, 0.1); color: #1890ff;">
+                👥
+            </div>
+            <div class="metric-content">
+                <h3>~2.3K</h3>
+                <p>Users Impacted</p>
+            </div>
+        </div>
+        
+        <div class="metric-card">
+            <div class="metric-icon" style="background: rgba(82, 196, 26, 0.1); color: #52c41a;">
+                ⏱️
+            </div>
+            <div class="metric-content">
+                <h3>8m</h3>
+                <p>Avg Resolution</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="main-workspace">
+        <!-- Triage Panel -->
+        <div class="triage-panel">
+            <div class="panel-header">
+                <h3>🎯 Priority Queue</h3>
+                <span style="background: #f0f0f0; padding: 4px 8px; border-radius: 12px; font-size: 12px;">7 alerts</span>
+            </div>
+            
+            <div class="alert-filters">
+                <div class="filter-tag active">All</div>
+                <div class="filter-tag">P0</div>
+                <div class="filter-tag">P1</div>
+                <div class="filter-tag">Customer</div>
+                <div class="filter-tag">Cascading</div>
+            </div>
+            
+            <div class="alert-queue">
+                <!-- P0 Alert -->
+                <div class="alert-card p0 selected" onclick="selectAlert(this)">
+                    <div class="alert-header">
+                        <span class="alert-priority">P0</span>
+                        <span style="font-size: 12px; color: #8c8c8c;">2m ago</span>
+                    </div>
+                    <div class="alert-service">payment-service</div>
+                    <div class="alert-message">Database connection timeout - high latency detected</div>
+                    <div class="alert-meta">
+                        <div class="blast-radius">
+                            <span>💥</span>
+                            <span>8 services</span>
+                        </div>
+                        <span>Customer Impact</span>
+                    </div>
+                </div>
+
+                <!-- P1 Alert -->
+                <div class="alert-card p1" onclick="selectAlert(this)">
+                    <div class="alert-header">
+                        <span class="alert-priority p1">P1</span>
+                        <span style="font-size: 12px; color: #8c8c8c;">5m ago</span>
+                    </div>
+                    <div class="alert-service">order-processing</div>
+                    <div class="alert-message">Queue backing up - processing delays</div>
+                    <div class="alert-meta">
+                        <div class="blast-radius">
+                            <span>🔗</span>
+                            <span>3 services</span>
+                        </div>
+                        <span>Cascade Effect</span>
+                    </div>
+                </div>
+
+                <!-- P1 Alert -->
+                <div class="alert-card p1" onclick="selectAlert(this)">
+                    <div class="alert-header">
+                        <span class="alert-priority p1">P1</span>
+                        <span style="font-size: 12px; color: #8c8c8c;">7m ago</span>
+                    </div>
+                    <div class="alert-service">user-auth</div>
+                    <div class="alert-message">High error rate on login endpoint</div>
+                    <div class="alert-meta">
+                        <div class="blast-radius">
+                            <span>👤</span>
+                            <span>5 services</span>
+                        </div>
+                        <span>Auth Cluster</span>
+                    </div>
+                </div>
+
+                <!-- P2 Alert -->
+                <div class="alert-card p2" onclick="selectAlert(this)">
+                    <div class="alert-header">
+                        <span class="alert-priority p2">P2</span>
+                        <span style="font-size: 12px; color: #8c8c8c;">15m ago</span>
+                    </div>
+                    <div class="alert-service">notification-service</div>
+                    <div class="alert-message">Email delivery delayed</div>
+                    <div class="alert-meta">
+                        <div class="blast-radius">
+                            <span>📧</span>
+                            <span>1 service</span>
+                        </div>
+                        <span>Isolated</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Service Graph -->
+        <div class="service-graph">
+            <div class="graph-container" id="graphContainer">
+                <!-- Service Nodes -->
+                <div class="service-node critical selected" style="top: 200px; left: 300px;" onclick="selectNode(this)">
+                    💳
+                    <div class="service-label">payment-service</div>
+                </div>
+                
+                <div class="service-node warning" style="top: 120px; left: 500px;" onclick="selectNode(this)">
+                    📦
+                    <div class="service-label">order-processing</div>
+                </div>
+                
+                <div class="service-node warning" style="top: 280px; left: 500px;" onclick="selectNode(this)">
+                    🔐
+                    <div class="service-label">user-auth</div>
+                </div>
+                
+                <div class="service-node healthy" style="top: 200px; left: 700px;" onclick="selectNode(this)">
+                    🏪
+                    <div class="service-label">storefront</div>
+                </div>
+                
+                <div class="service-node healthy" style="top: 320px; left: 120px;" onclick="selectNode(this)">
+                    🗄️
+                    <div class="service-label">database</div>
+                </div>
+                
+                <div class="service-node warning" style="top: 80px; left: 120px;" onclick="selectNode(this)">
+                    📧
+                    <div class="service-label">notification</div>
+                </div>
+
+                <!-- Dependency Lines -->
+                <div class="dependency-line active" style="top: 230px; left: 200px; width: 120px; transform: rotate(0deg);"></div>
+                <div class="dependency-line active" style="top: 150px; left: 380px; width: 140px; transform: rotate(0deg);"></div>
+                <div class="dependency-line" style="top: 310px; left: 380px; width: 140px; transform: rotate(0deg);"></div>
+                <div class="dependency-line" style="top: 230px; left: 580px; width: 140px; transform: rotate(0deg);"></div>
+            </div>
+            
+            <div class="graph-controls">
+                <div class="graph-control" title="Zoom In">🔍+</div>
+                <div class="graph-control" title="Zoom Out">🔍-</div>
+                <div class="graph-control" title="Center View">🎯</div>
+                <div class="graph-control" title="Fullscreen">⛶</div>
+            </div>
+        </div>
+
+        <!-- Details Panel -->
+        <div class="details-panel">
+            <div class="panel-header">
+                <h3>🚨 Alert Details</h3>
+                <span style="background: #ff4d4f; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px;">P0</span>
+            </div>
+            
+            <div class="alert-details">
+                <div class="detail-section">
+                    <h4>Service Information</h4>
+                    <div class="detail-row">
+                        <span class="detail-label">Service:</span>
+                        <span class="detail-value">payment-service</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Namespace:</span>
+                        <span class="detail-value">production</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Team:</span>
+                        <span class="detail-value">payments-team</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Environment:</span>
+                        <span class="detail-value">production</span>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h4>Alert Details</h4>
+                    <div class="detail-row">
+                        <span class="detail-label">Severity:</span>
+                        <span class="detail-value" style="color: #ff4d4f;">Critical</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Duration:</span>
+                        <span class="detail-value">2m 15s</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Count:</span>
+                        <span class="detail-value">47 events</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Source:</span>
+                        <span class="detail-value">Alertmanager</span>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <div class="detail-label" style="margin-bottom: 8px;">Message:</div>
+                        <div style="background: #f9f9f9; padding: 12px; border-radius: 6px; font-size: 13px;">
+                            Database connection timeout - high latency detected. Response times above 5s threshold.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h4>Blast Radius Analysis</h4>
+                    <div class="detail-row">
+                        <span class="detail-label">Affected Services:</span>
+                        <span class="detail-value" style="color: #ff4d4f;">8 services</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Customer Impact:</span>
+                        <span class="detail-value">~2,300 users</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Business Impact:</span>
+                        <span class="detail-value" style="color: #ff4d4f;">Revenue</span>
+                    </div>
+                    
+                    <div class="impact-visualization">
+                        <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 8px;">Downstream Services:</div>
+                        <div class="impact-services">
+                            <div class="impact-service affected">order-processing</div>
+                            <div class="impact-service affected">checkout-service</div>
+                            <div class="impact-service affected">billing-service</div>
+                            <div class="impact-service">inventory-service</div>
+                            <div class="impact-service">shipping-service</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h4>Event Timeline</h4>
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-dot critical"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-time">14:21:30</div>
+                                <div class="timeline-event">Alert fired - Database timeout detected</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-dot warning"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-time">14:22:15</div>
+                                <div class="timeline-event">Cascade alert - Order processing affected</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-dot warning"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-time">14:22:45</div>
+                                <div class="timeline-event">User reports - Checkout failures</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-time">14:23:00</div>
+                                <div class="timeline-event">Investigation started by @sarah.chen</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h4>Recommended Actions</h4>
+                    <div style="background: #e6f7ff; border: 1px solid #91d5ff; border-radius: 6px; padding: 12px;">
+                        <div style="font-weight: 600; margin-bottom: 8px; color: #0050b3;">💡 Runbook Available</div>
+                        <div style="font-size: 13px; color: #0050b3; margin-bottom: 8px;">
+                            Database Connection Issues - Payment Service
+                        </div>
+                        <div style="font-size: 12px; color: #69c0ff;">
+                            Estimated Resolution: 5-10 minutes
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn btn-primary">🔧 Acknowledge</button>
+                <button class="btn">📝 Escalate</button>
+                <button class="btn">🔇 Suppress</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function selectAlert(element) {
+            // Remove selected class from all cards
+            document.querySelectorAll('.alert-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked card
+            element.classList.add('selected');
+            
+            // Update service graph highlighting
+            updateGraphHighlight();
+        }
+
+        function selectNode(element) {
+            // Remove selected class from all nodes
+            document.querySelectorAll('.service-node').forEach(node => {
+                node.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked node
+            element.classList.add('selected');
+        }
+
+        function updateGraphHighlight() {
+            // Update dependency lines to show active flows
+            document.querySelectorAll('.dependency-line').forEach(line => {
+                line.classList.add('active');
+            });
+        }
+
+        // Simulate real-time updates
+        setInterval(() => {
+            const timeElements = document.querySelectorAll('.timeline-time');
+            // Could update timestamps here for real-time effect
+        }, 30000);
+
+        // Add some interactivity to graph controls
+        document.querySelectorAll('.graph-control').forEach(control => {
+            control.addEventListener('click', function() {
+                this.style.background = '#1890ff';
+                this.style.color = 'white';
+                setTimeout(() => {
+                    this.style.background = 'white';
+                    this.style.color = 'inherit';
+                }, 200);
+            });
+        });
+    </script>
+</body>
+</html>

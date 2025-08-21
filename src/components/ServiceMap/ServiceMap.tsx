@@ -160,6 +160,14 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
 
   // Process nodes with enhanced styling and alert information
   const processNodes = (): EnhancedNode[] => {
+    console.log('[ServiceMap] Processing nodes, input nodes with alerts:', 
+      nodes.filter(n => n.nodeType === 'service' && (n.alertCount || 0) > 0).map(n => ({
+        id: n.id,
+        alertCount: n.alertCount,
+        highestSeverity: n.highestSeverity
+      }))
+    );
+    
     return nodes
       .filter(node => {
         if (!showServices && node.nodeType === 'service') return false;
@@ -170,6 +178,14 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
         const isService = node.nodeType === 'service';
         const alertCount = node.alertCount || 0;
         const severity = node.highestSeverity || 'none';
+        
+        if (isService && alertCount > 0) {
+          console.log(`[ServiceMap] Processing service node ${node.id}:`, {
+            alertCount,
+            severity,
+            nodeType: node.nodeType
+          });
+        }
         
         // Enhanced color scheme
         const getNodeColor = () => {
@@ -298,8 +314,11 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
         
         const borderConfig = getBorderConfig();
 
-        return {
+        const processedNode = {
           ...node,
+          // Explicitly preserve alert properties for animation
+          alertCount,
+          highestSeverity: severity,
           label: isService ? `${node.label}${alertLabel}` : node.label,
           color: nodeColor,
           borderColor: borderConfig.color,
@@ -328,6 +347,15 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
           } : undefined,
           tooltipContent: buildTooltip()
         };
+        
+        if (isService && alertCount > 0) {
+          console.log(`[ServiceMap] Processed node ${node.id} with alerts:`, {
+            alertCount: processedNode.alertCount,
+            highestSeverity: processedNode.highestSeverity
+          });
+        }
+        
+        return processedNode;
       });
   };
 
@@ -397,7 +425,7 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
         return {
           hierarchical: {
             enabled: true,
-            direction: "TB",
+            direction: "UD",
             sortMethod: "directed",
             nodeSpacing: focusMode ? 120 : 150,
             levelSeparation: focusMode ? 100 : 120,
@@ -460,6 +488,24 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
   // Animation system for pulsing nodes
   const startPulsingAnimation = useCallback(() => {
     if (!networkRef.current || !nodesDataSetRef.current) return;
+    
+    // Log which nodes have alerts for debugging
+    const currentNodes = nodesDataSetRef.current.get();
+    const alertNodes = currentNodes.filter(node => 
+      node.nodeType === 'service' && (node.alertCount || 0) > 0
+    );
+    
+    if (alertNodes.length > 0) {
+      console.log('[ServiceMap] Starting animation for nodes with alerts:', 
+        alertNodes.map(n => ({
+          id: n.id,
+          alertCount: n.alertCount,
+          severity: n.highestSeverity
+        }))
+      );
+    } else {
+      console.log('[ServiceMap] No nodes with alerts found for animation');
+    }
     
     const animate = (timestamp: number) => {
       if (!nodesDataSetRef.current) return;
@@ -602,10 +648,19 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
           });
         }
         
+        console.log('[ServiceMap] Stabilization done, starting animation');
         setTimeout(() => {
           startPulsingAnimation();
         }, 1000);
       });
+
+      // For hierarchical layouts, start animation immediately since physics are disabled
+      if (layoutStyle === 'hierarchical') {
+        console.log('[ServiceMap] Hierarchical layout detected, starting animation immediately');
+        setTimeout(() => {
+          startPulsingAnimation();
+        }, 500);
+      }
 
     } catch (error) {
       logger.error('Failed to render enhanced graph:', error);

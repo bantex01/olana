@@ -26,7 +26,10 @@ export const TotalOpenAlertsCard: React.FC<TotalOpenAlertsCardProps> = ({
         title="Total Open Alerts"
         value={value}
         prefix={<AlertOutlined />}
-        valueStyle={{ color: '#8c8c8c', fontSize: '20px' }}
+        valueStyle={{ 
+          color: value > 0 ? '#ff4d4f' : '#52c41a', 
+          fontSize: '20px' 
+        }}
       />
       {showBreakdown && openCount !== undefined && acknowledgedCount !== undefined && (
         <div style={{ 

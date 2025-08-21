@@ -12,6 +12,7 @@ import { FilteredDashboard } from './components/Dashboard/FilteredDashboard';
 import { IncidentsPage } from './components/Incidents/IncidentsPage';
 import { ServicesPage } from './components/Services/ServicesPage';
 import { ServiceDetailPage } from './components/Services/ServiceDetailPage';
+import { ServiceHealthPage } from './components/Operations/ServiceHealthPage';
 import { ThemeToggle } from './components/Common/ThemeToggle';
 
 
@@ -45,6 +46,17 @@ const menuItems = [
       {
         key: 'services-health',
         label: 'Health & Status',
+      },
+    ],
+  },
+  {
+    key: 'operations',
+    icon: <AlertOutlined />,
+    label: 'Operations',
+    children: [
+      {
+        key: 'operations-service-health',
+        label: 'Service Health',
       },
     ],
   },
@@ -140,6 +152,8 @@ const App: React.FC = () => {
           activeTab={selectedKey} 
           onServiceSelect={(namespace: string, name: string) => setServiceDetailParams({namespace, name})}
         />;
+      case 'operations-service-health':
+        return <ServiceHealthPage />;
       case 'incidents':
         return <IncidentsPage />;
       case 'analytics':
