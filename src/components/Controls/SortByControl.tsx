@@ -4,7 +4,7 @@ import { SortAscendingOutlined, SortDescendingOutlined, OrderedListOutlined } fr
 
 const { Text } = Typography;
 
-export type SortOption = 'severity' | 'alertCount' | 'duration' | 'activity' | 'service' | 'namespace';
+export type SortOption = 'severity' | 'alertCount' | 'duration' | 'activity' | 'service' | 'namespace' | 'mtta';
 export type SortDirection = 'asc' | 'desc';
 
 export interface SortConfig {
@@ -37,6 +37,7 @@ export const SortByControl: React.FC<SortByControlProps> = ({
     { key: 'alertCount', label: 'Alert Count', tooltip: 'Sort by number of alerts per service' },
     { key: 'duration', label: 'Duration', tooltip: 'Sort by longest running alert duration' },
     { key: 'activity', label: 'Latest Activity', tooltip: 'Sort by most recent alert activity' },
+    { key: 'mtta', label: 'MTTA', tooltip: 'Sort by Mean Time to Acknowledge (longest unacknowledged alerts first)' },
     { key: 'service', label: 'Service Name', tooltip: 'Sort alphabetically by service name' },
     { key: 'namespace', label: 'Namespace', tooltip: 'Sort alphabetically by namespace' },
   ];
@@ -59,20 +60,14 @@ export const SortByControl: React.FC<SortByControlProps> = ({
     <div style={{ marginBottom: '16px' }}>
       <div style={{ 
         display: 'flex', 
-        justifyContent: 'space-between', 
         alignItems: 'center',
+        gap: '12px',
         marginBottom: '8px'
       }}>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '8px'
-        }}>
-          <OrderedListOutlined style={{ color: 'var(--accent-primary)' }} />
-          <Text strong style={{ color: 'var(--text-primary)' }}>
-            Sort by:
-          </Text>
-        </div>
+        <OrderedListOutlined style={{ color: 'var(--accent-primary)' }} />
+        <Text strong style={{ color: 'var(--text-primary)' }}>
+          Sort by:
+        </Text>
         <Text type="secondary" style={{ fontSize: '12px' }}>
           Click any button to toggle ascending/descending
         </Text>

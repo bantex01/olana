@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { message } from 'antd';
 import type { Alert, ServiceGroup } from '../types';
 import { API_BASE_URL } from '../utils/api';
 import { logger } from '../utils/logger';
@@ -55,18 +56,65 @@ const groupAlertsByService = (alerts: Alert[]): ServiceGroup[] => {
   return Object.values(grouped);
 };
 
+// Calculate MTTA (Mean Time to Acknowledge)
+// For operationally useful metrics, includes time that unacknowledged alerts have been waiting
+const calculateMTTA = (alerts: Alert[]): number => {
+  // Filter out alerts without first_seen timestamp
+  const validAlerts = alerts.filter(alert => alert.first_seen);
+  
+  if (validAlerts.length === 0) return 0;
+  
+  const totalTime = validAlerts.reduce((total, alert) => {
+    const firstSeen = new Date(alert.first_seen).getTime();
+    const endTime = alert.acknowledged_at 
+      ? new Date(alert.acknowledged_at).getTime()  // Time when acknowledged
+      : Date.now();                                // Still waiting (current time)
+    return total + (endTime - firstSeen);
+  }, 0);
+  
+  return totalTime / validAlerts.length / 1000 / 60; // Convert to minutes
+};
+
+// Calculate MTTR (Mean Time to Resolve)
+const calculateMTTR = (alerts: Alert[]): number => {
+  const resolvedAlerts = alerts.filter(alert => 
+    alert.resolved_at && alert.first_seen
+  );
+  
+  if (resolvedAlerts.length === 0) return 0;
+  
+  const totalResolveTime = resolvedAlerts.reduce((total, alert) => {
+    const firstSeen = new Date(alert.first_seen).getTime();
+    const resolvedAt = new Date(alert.resolved_at!).getTime();
+    return total + (resolvedAt - firstSeen);
+  }, 0);
+  
+  return totalResolveTime / resolvedAlerts.length / 1000 / 60; // Convert to minutes
+};
+
+export interface PerformanceMetrics {
+  mtta: number; // in minutes
+  mttr: number; // in minutes
+}
+
 export interface UseServiceHealthReturn {
   serviceGroups: ServiceGroup[];
+  performanceMetrics: PerformanceMetrics;
   loading: boolean;
   error: string | null;
+  acknowledgingAlerts: Set<number>;
   fetchServiceGroups: (filters: GraphFilters) => Promise<void>;
+  acknowledgeAlert: (alertId: number) => Promise<void>;
   lastUpdated: Date | null;
 }
 
 export const useServiceHealth = (): UseServiceHealthReturn => {
   const [serviceGroups, setServiceGroups] = useState<ServiceGroup[]>([]);
+  const [allAlerts, setAllAlerts] = useState<Alert[]>([]);
+  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics>({ mtta: 0, mttr: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [acknowledgingAlerts, setAcknowledgingAlerts] = useState<Set<number>>(new Set());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchServiceGroups = useCallback(async (filters: GraphFilters) => {
@@ -90,7 +138,18 @@ export const useServiceHealth = (): UseServiceHealthReturn => {
       
       // Fetch alerts
       const response = await fetch(`${API_BASE_URL}/alerts${queryString}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const alertData: Alert[] = await response.json();
+      
+      // Store all alerts for metrics calculation
+      setAllAlerts(alertData);
+      
+      // Calculate performance metrics from all alerts
+      const mtta = calculateMTTA(alertData);
+      const mttr = calculateMTTR(alertData);
+      setPerformanceMetrics({ mtta, mttr });
       
       // Apply client-side search filter
       let filteredAlerts = alertData;
@@ -117,11 +176,88 @@ export const useServiceHealth = (): UseServiceHealthReturn => {
     }
   }, []);
 
+  const acknowledgeAlert = useCallback(async (alertId: number) => {
+    try {
+      setAcknowledgingAlerts(prev => new Set(prev).add(alertId));
+      
+      const response = await fetch(`${API_BASE_URL}/alerts/${alertId}/acknowledge`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          acknowledged_by: 'Current User' // This would come from auth context in real app
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      // Update the alert in state
+      setAllAlerts(prevAlerts => 
+        prevAlerts.map(alert => 
+          alert.alert_id === alertId 
+            ? { 
+                ...alert, 
+                acknowledged_at: result.acknowledgmentTime, 
+                acknowledged_by: 'Current User' 
+              }
+            : alert
+        )
+      );
+
+      // Update service groups to reflect acknowledgment
+      setServiceGroups(prevGroups => 
+        prevGroups.map(group => ({
+          ...group,
+          alerts: group.alerts.map(alert => 
+            alert.alert_id === alertId 
+              ? { 
+                  ...alert, 
+                  acknowledged_at: result.acknowledgmentTime, 
+                  acknowledged_by: 'Current User' 
+                }
+              : alert
+          )
+        }))
+      );
+
+      // Recalculate performance metrics
+      const updatedAlerts = allAlerts.map(alert => 
+        alert.alert_id === alertId 
+          ? { ...alert, acknowledged_at: result.acknowledgmentTime, acknowledged_by: 'default_user' }
+          : alert
+      );
+      const mtta = calculateMTTA(updatedAlerts);
+      const mttr = calculateMTTR(updatedAlerts);
+      setPerformanceMetrics({ mtta, mttr });
+
+      message.success('Alert acknowledged successfully');
+      logger.info(`Alert ${alertId} acknowledged successfully`);
+
+    } catch (error) {
+      logger.error(`Failed to acknowledge alert ${alertId}:`, error);
+      message.error('Failed to acknowledge alert. Please try again.');
+    } finally {
+      setAcknowledgingAlerts(prev => {
+        const next = new Set(prev);
+        next.delete(alertId);
+        return next;
+      });
+    }
+  }, [allAlerts]);
+
   return {
     serviceGroups,
+    performanceMetrics,
     loading,
     error,
+    acknowledgingAlerts,
     fetchServiceGroups,
+    acknowledgeAlert,
     lastUpdated,
   };
 };

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
-import { processManualAlert, resolveManualAlert } from '../utils/alertProcessing';
+import { processManualAlert, resolveManualAlert, acknowledgeManualAlert } from '../utils/alertProcessing';
 import { handleRouteError, handleClientError } from '../utils/errorHandler';
 
 type Alert = {
@@ -41,6 +41,35 @@ export function createAlertsRoutes(pool: Pool): Router {
     } catch (error) {
       const incidentId = parseInt(req.params.incidentId);
       handleRouteError(error, res, req.log, 'resolve alert', { incidentId });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Acknowledge an alert by incident ID
+  router.patch("/alerts/:incidentId/acknowledge", async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+      const incidentId = parseInt(req.params.incidentId);
+      
+      if (isNaN(incidentId)) {
+        return handleClientError(res, "Invalid incident ID");
+      }
+      
+      const result = await acknowledgeManualAlert(client, incidentId, req.log);
+      
+      res.json({ 
+        status: "ok",
+        message: "Alert acknowledged successfully",
+        incidentId: result.incidentId,
+        eventId: result.eventId,
+        acknowledgmentTime: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      const incidentId = parseInt(req.params.incidentId);
+      handleRouteError(error, res, req.log, 'acknowledge alert', { incidentId });
     } finally {
       client.release();
     }
@@ -121,6 +150,8 @@ export function createAlertsRoutes(pool: Pool): Router {
           i.incident_end as resolved_at,
           i.alert_source,
           i.external_alert_id,
+          i.acknowledged_at,
+          i.acknowledged_by,
           -- Calculate count from events
           (SELECT COUNT(*) FROM alert_events e WHERE e.incident_id = i.id AND e.event_type = 'fired') as count
         FROM alert_incidents i
@@ -210,7 +241,9 @@ export function createAlertsRoutes(pool: Pool): Router {
         created_at: row.created_at,
         resolved_at: row.resolved_at,
         alert_source: row.alert_source,
-        external_alert_id: row.external_alert_id
+        external_alert_id: row.external_alert_id,
+        acknowledged_at: row.acknowledged_at,
+        acknowledged_by: row.acknowledged_by
       }));
       
       req.log.info({ alertCount: alerts.length }, 'Returning active incidents');
@@ -445,6 +478,18 @@ export function createAlertsRoutes(pool: Pool): Router {
           AND incident_end IS NOT NULL
       `, [cutoff]);
 
+      // MTTA (Mean Time To Acknowledge) calculation
+      const mttaResult = await client.query(`
+        SELECT 
+          AVG(EXTRACT(EPOCH FROM (acknowledged_at - incident_start)) / 60) as avg_acknowledgment_minutes,
+          MIN(EXTRACT(EPOCH FROM (acknowledged_at - incident_start)) / 60) as fastest_acknowledgment_minutes,
+          MAX(EXTRACT(EPOCH FROM (acknowledged_at - incident_start)) / 60) as slowest_acknowledgment_minutes,
+          COUNT(*) as acknowledged_count
+        FROM alert_incidents 
+        WHERE acknowledged_at IS NOT NULL
+          AND incident_start >= $1
+      `, [cutoff]);
+
       // Most frequent alerts
       const frequentAlertsResult = await client.query(`
         SELECT 
@@ -497,6 +542,7 @@ export function createAlertsRoutes(pool: Pool): Router {
 
       const counts = countsResult.rows[0];
       const mttr = mttrResult.rows[0];
+      const mtta = mttaResult.rows[0];
 
       res.json({
         time_range_hours: hours,
@@ -512,6 +558,12 @@ export function createAlertsRoutes(pool: Pool): Router {
           fastest_minutes: mttr.fastest_resolution_minutes ? Math.round(parseFloat(mttr.fastest_resolution_minutes)) : null,
           slowest_minutes: mttr.slowest_resolution_minutes ? Math.round(parseFloat(mttr.slowest_resolution_minutes)) : null,
           resolved_count: parseInt(mttr.resolved_count)
+        },
+        mtta: {
+          average_minutes: mtta.avg_acknowledgment_minutes ? Math.round(parseFloat(mtta.avg_acknowledgment_minutes)) : null,
+          fastest_minutes: mtta.fastest_acknowledgment_minutes ? Math.round(parseFloat(mtta.fastest_acknowledgment_minutes)) : null,
+          slowest_minutes: mtta.slowest_acknowledgment_minutes ? Math.round(parseFloat(mtta.slowest_acknowledgment_minutes)) : null,
+          acknowledged_count: parseInt(mtta.acknowledged_count)
         },
         most_frequent_alerts: frequentAlertsResult.rows.map(row => ({
           service: row.service,
@@ -640,6 +692,258 @@ export function createAlertsRoutes(pool: Pool): Router {
     }
   });
 
+  // Get service-specific analytics (MTTA/MTTR)
+  router.get("/alerts/analytics/service/:namespace/:serviceName", async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+      const { namespace, serviceName } = req.params;
+      const hours = parseInt(req.query.hours as string) || 24;
+      const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
+      
+      req.log.debug({ namespace, serviceName, hours }, 'Getting service analytics');
+      
+      // Use materialized view for efficient aggregation
+      const analyticsResult = await client.query(`
+        SELECT 
+          SUM(incident_count) as total_incidents,
+          SUM(resolved_count) as total_resolved,
+          SUM(acknowledged_count) as total_acknowledged,
+          -- Weighted average for MTTR (weight by resolved incidents)
+          CASE 
+            WHEN SUM(resolved_count) > 0 THEN
+              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
+            ELSE NULL
+          END as avg_resolution_minutes,
+          -- Weighted average for MTTA (weight by acknowledged incidents)
+          CASE 
+            WHEN SUM(acknowledged_count) > 0 THEN
+              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
+            ELSE NULL
+          END as avg_acknowledgment_minutes
+        FROM alert_analytics_hourly
+        WHERE service_namespace = $1 
+          AND service_name = $2
+          AND hour >= $3
+      `, [namespace, serviceName, cutoff]);
+
+      // Get breakdown by severity
+      const severityResult = await client.query(`
+        SELECT 
+          severity,
+          SUM(incident_count) as incident_count,
+          SUM(resolved_count) as resolved_count,
+          SUM(acknowledged_count) as acknowledged_count,
+          CASE 
+            WHEN SUM(resolved_count) > 0 THEN
+              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
+            ELSE NULL
+          END as avg_duration_minutes,
+          CASE 
+            WHEN SUM(acknowledged_count) > 0 THEN
+              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
+            ELSE NULL
+          END as avg_acknowledgment_minutes
+        FROM alert_analytics_hourly
+        WHERE service_namespace = $1 
+          AND service_name = $2
+          AND hour >= $3
+        GROUP BY severity
+        ORDER BY 
+          CASE severity 
+            WHEN 'fatal' THEN 1 
+            WHEN 'critical' THEN 2 
+            WHEN 'warning' THEN 3 
+            WHEN 'none' THEN 4 
+          END
+      `, [namespace, serviceName, cutoff]);
+
+      const analytics = analyticsResult.rows[0];
+
+      res.json({
+        service: `${namespace}::${serviceName}`,
+        time_range_hours: hours,
+        summary: {
+          total_incidents: parseInt(analytics.total_incidents) || 0,
+          resolved_incidents: parseInt(analytics.total_resolved) || 0,
+          acknowledged_incidents: parseInt(analytics.total_acknowledged) || 0,
+          acknowledgment_rate: analytics.total_incidents > 0 ? 
+            Math.round((analytics.total_acknowledged / analytics.total_incidents) * 100) : 0
+        },
+        mttr: {
+          average_minutes: analytics.avg_resolution_minutes ? 
+            Math.round(parseFloat(analytics.avg_resolution_minutes)) : null,
+          resolved_count: parseInt(analytics.total_resolved) || 0
+        },
+        mtta: {
+          average_minutes: analytics.avg_acknowledgment_minutes ? 
+            Math.round(parseFloat(analytics.avg_acknowledgment_minutes)) : null,
+          acknowledged_count: parseInt(analytics.total_acknowledged) || 0
+        },
+        severity_breakdown: severityResult.rows.map(row => ({
+          severity: row.severity,
+          incident_count: parseInt(row.incident_count),
+          resolved_count: parseInt(row.resolved_count),
+          acknowledged_count: parseInt(row.acknowledged_count),
+          avg_resolution_minutes: row.avg_duration_minutes ? 
+            Math.round(parseFloat(row.avg_duration_minutes)) : null,
+          avg_acknowledgment_minutes: row.avg_acknowledgment_minutes ? 
+            Math.round(parseFloat(row.avg_acknowledgment_minutes)) : null
+        }))
+      });
+      
+    } catch (error) {
+      const { namespace, serviceName } = req.params;
+      handleRouteError(error, res, req.log, 'fetch service analytics', { namespace, serviceName });
+    } finally {
+      client.release();
+    }
+  });
+
+  // Get namespace-level aggregated analytics (MTTA/MTTR)
+  router.get("/alerts/analytics/namespace/:namespace", async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+      const { namespace } = req.params;
+      const hours = parseInt(req.query.hours as string) || 24;
+      const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
+      
+      req.log.debug({ namespace, hours }, 'Getting namespace analytics');
+      
+      // Use materialized view for efficient aggregation
+      const analyticsResult = await client.query(`
+        SELECT 
+          SUM(incident_count) as total_incidents,
+          SUM(resolved_count) as total_resolved,
+          SUM(acknowledged_count) as total_acknowledged,
+          COUNT(DISTINCT service_name) as affected_services,
+          -- Weighted average for MTTR
+          CASE 
+            WHEN SUM(resolved_count) > 0 THEN
+              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
+            ELSE NULL
+          END as avg_resolution_minutes,
+          -- Weighted average for MTTA
+          CASE 
+            WHEN SUM(acknowledged_count) > 0 THEN
+              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
+            ELSE NULL
+          END as avg_acknowledgment_minutes
+        FROM alert_analytics_hourly
+        WHERE service_namespace = $1 
+          AND hour >= $2
+      `, [namespace, cutoff]);
+
+      // Get top services by incident count
+      const topServicesResult = await client.query(`
+        SELECT 
+          service_name,
+          SUM(incident_count) as total_incidents,
+          SUM(resolved_count) as total_resolved,
+          SUM(acknowledged_count) as total_acknowledged,
+          CASE 
+            WHEN SUM(resolved_count) > 0 THEN
+              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
+            ELSE NULL
+          END as avg_resolution_minutes,
+          CASE 
+            WHEN SUM(acknowledged_count) > 0 THEN
+              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
+            ELSE NULL
+          END as avg_acknowledgment_minutes
+        FROM alert_analytics_hourly
+        WHERE service_namespace = $1 
+          AND hour >= $2
+        GROUP BY service_name
+        HAVING SUM(incident_count) > 0
+        ORDER BY SUM(incident_count) DESC
+        LIMIT 10
+      `, [namespace, cutoff]);
+
+      // Get severity breakdown
+      const severityResult = await client.query(`
+        SELECT 
+          severity,
+          SUM(incident_count) as incident_count,
+          SUM(resolved_count) as resolved_count,
+          SUM(acknowledged_count) as acknowledged_count,
+          CASE 
+            WHEN SUM(resolved_count) > 0 THEN
+              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
+            ELSE NULL
+          END as avg_duration_minutes,
+          CASE 
+            WHEN SUM(acknowledged_count) > 0 THEN
+              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
+            ELSE NULL
+          END as avg_acknowledgment_minutes
+        FROM alert_analytics_hourly
+        WHERE service_namespace = $1 
+          AND hour >= $2
+        GROUP BY severity
+        ORDER BY 
+          CASE severity 
+            WHEN 'fatal' THEN 1 
+            WHEN 'critical' THEN 2 
+            WHEN 'warning' THEN 3 
+            WHEN 'none' THEN 4 
+          END
+      `, [namespace, cutoff]);
+
+      const analytics = analyticsResult.rows[0];
+
+      res.json({
+        namespace: namespace,
+        time_range_hours: hours,
+        summary: {
+          total_incidents: parseInt(analytics.total_incidents) || 0,
+          resolved_incidents: parseInt(analytics.total_resolved) || 0,
+          acknowledged_incidents: parseInt(analytics.total_acknowledged) || 0,
+          affected_services: parseInt(analytics.affected_services) || 0,
+          acknowledgment_rate: analytics.total_incidents > 0 ? 
+            Math.round((analytics.total_acknowledged / analytics.total_incidents) * 100) : 0
+        },
+        mttr: {
+          average_minutes: analytics.avg_resolution_minutes ? 
+            Math.round(parseFloat(analytics.avg_resolution_minutes)) : null,
+          resolved_count: parseInt(analytics.total_resolved) || 0
+        },
+        mtta: {
+          average_minutes: analytics.avg_acknowledgment_minutes ? 
+            Math.round(parseFloat(analytics.avg_acknowledgment_minutes)) : null,
+          acknowledged_count: parseInt(analytics.total_acknowledged) || 0
+        },
+        top_services: topServicesResult.rows.map(row => ({
+          service_name: row.service_name,
+          incident_count: parseInt(row.total_incidents),
+          resolved_count: parseInt(row.total_resolved),
+          acknowledged_count: parseInt(row.total_acknowledged),
+          avg_resolution_minutes: row.avg_resolution_minutes ? 
+            Math.round(parseFloat(row.avg_resolution_minutes)) : null,
+          avg_acknowledgment_minutes: row.avg_acknowledgment_minutes ? 
+            Math.round(parseFloat(row.avg_acknowledgment_minutes)) : null
+        })),
+        severity_breakdown: severityResult.rows.map(row => ({
+          severity: row.severity,
+          incident_count: parseInt(row.incident_count),
+          resolved_count: parseInt(row.resolved_count),
+          acknowledged_count: parseInt(row.acknowledged_count),
+          avg_resolution_minutes: row.avg_duration_minutes ? 
+            Math.round(parseFloat(row.avg_duration_minutes)) : null,
+          avg_acknowledgment_minutes: row.avg_acknowledgment_minutes ? 
+            Math.round(parseFloat(row.avg_acknowledgment_minutes)) : null
+        }))
+      });
+      
+    } catch (error) {
+      const { namespace } = req.params;
+      handleRouteError(error, res, req.log, 'fetch namespace analytics', { namespace });
+    } finally {
+      client.release();
+    }
+  });
+
 // Helper function for pattern recommendations
 function getPatternRecommendation(patternType: string, avgHours: number): string {
   switch (patternType) {
@@ -662,17 +966,4 @@ function formatDuration(seconds: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
   return `${Math.round(seconds / 86400)}d`;
-}
-
-function getPatternRecommendation(patternType: string, avgHours: number): string {
-  switch (patternType) {
-    case 'flapping':
-      return 'Alert is flapping - consider adjusting thresholds or adding hysteresis';
-    case 'frequent':
-      return `Alert occurs every ${avgHours.toFixed(1)}h on average - investigate root cause`;
-    case 'recurring':
-      return 'Alert recurs regularly - may indicate systemic issue requiring attention';
-    default:
-      return 'No specific recommendation';
-  }
 }

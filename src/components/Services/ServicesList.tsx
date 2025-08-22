@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Typography, Empty } from 'antd';
 import { ThemedServiceRow } from './ThemedServiceRow';
 import { RichServiceDrillDown } from './RichServiceDrillDown';
+import { calculateMTTA } from '../../utils/mttaCalculations';
 import type { ServiceGroup } from '../../types';
 import type { ArrangementOption, SortConfig } from '../Controls';
 
@@ -12,13 +13,17 @@ interface ServicesListProps {
   arrangement: ArrangementOption;
   sortConfig: SortConfig;
   loading?: boolean;
+  onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  acknowledgingAlerts?: Set<number>;
 }
 
 export const ServicesList: React.FC<ServicesListProps> = ({
   serviceGroups,
   arrangement,
   sortConfig,
-  loading = false
+  loading = false,
+  onAcknowledgeAlert,
+  acknowledgingAlerts
 }) => {
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
 
@@ -64,6 +69,11 @@ export const ServicesList: React.FC<ServicesListProps> = ({
           const aTime = a.latestActivity ? new Date(a.latestActivity).getTime() : 0;
           const bTime = b.latestActivity ? new Date(b.latestActivity).getTime() : 0;
           comparison = aTime - bTime;
+          break;
+        case 'mtta':
+          const aMTTA = calculateMTTA(a.alerts);
+          const bMTTA = calculateMTTA(b.alerts);
+          comparison = aMTTA - bMTTA;
           break;
       }
       
@@ -158,6 +168,8 @@ export const ServicesList: React.FC<ServicesListProps> = ({
                 {isExpanded && (
                   <RichServiceDrillDown 
                     serviceGroup={serviceGroup}
+                    onAcknowledgeAlert={onAcknowledgeAlert}
+                    acknowledgingAlerts={acknowledgingAlerts}
                   />
                 )}
               </div>

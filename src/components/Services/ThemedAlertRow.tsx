@@ -1,13 +1,20 @@
 import React from 'react';
 import { Tag, Space, Tooltip } from 'antd';
 import { AlertOutlined, ClockCircleOutlined, UserOutlined, NumberOutlined } from '@ant-design/icons';
+import { AcknowledgeButton, AcknowledgmentInfo } from '../Cards/Services';
 import type { Alert } from '../../types';
 
 interface ThemedAlertRowProps {
   alert: Alert;
+  onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  acknowledgingAlerts?: Set<number>;
 }
 
-export const ThemedAlertRow: React.FC<ThemedAlertRowProps> = ({ alert }) => {
+export const ThemedAlertRow: React.FC<ThemedAlertRowProps> = ({ 
+  alert, 
+  onAcknowledgeAlert,
+  acknowledgingAlerts 
+}) => {
   // Get severity color and styling (keep severity colors, but use theme-aware backgrounds)
   const getSeverityProps = (severity: string) => {
     switch (severity.toLowerCase()) {
@@ -132,6 +139,43 @@ export const ThemedAlertRow: React.FC<ThemedAlertRowProps> = ({ alert }) => {
 
         <span>Last seen: {formatLastSeen(alert.last_seen)}</span>
       </div>
+
+      {/* Acknowledgment section */}
+      {onAcknowledgeAlert && (
+        <div style={{
+          marginTop: '12px',
+          padding: '8px 0',
+          borderTop: '1px solid var(--border)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <AcknowledgeButton
+            alertId={alert.alert_id}
+            isAcknowledged={!!alert.acknowledged_at}
+            onAcknowledge={onAcknowledgeAlert}
+            loading={acknowledgingAlerts?.has(alert.alert_id) || false}
+            size="small"
+          />
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px',
+            flexWrap: 'wrap',
+            minWidth: 0 // Allow shrinking
+          }}>
+            {alert.acknowledged_at && (
+              <AcknowledgmentInfo 
+                acknowledgedBy={alert.acknowledged_by}
+                acknowledgedAt={alert.acknowledged_at}
+                size="small"
+                layout="horizontal"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
