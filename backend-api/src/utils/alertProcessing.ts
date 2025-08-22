@@ -155,6 +155,97 @@ export async function resolveManualAlert(
 }
 
 /**
+ * Acknowledge a manual alert (from PATCH /alerts/:id/acknowledge endpoint)
+ */
+export async function acknowledgeManualAlert(
+  client: PoolClient,
+  incidentId: number,
+  logger: Logger
+): Promise<AlertProcessingResult> {
+  try {
+    // Get the incident details
+    const incidentResult = await client.query(`
+      SELECT 
+        service_namespace,
+        service_name,
+        instance_id,
+        severity,
+        message,
+        status,
+        alert_source,
+        external_alert_id,
+        incident_start,
+        acknowledged_at
+      FROM alert_incidents 
+      WHERE id = $1
+    `, [incidentId]);
+
+    if (incidentResult.rows.length === 0) {
+      throw new Error(`Incident ${incidentId} not found`);
+    }
+
+    const incident = incidentResult.rows[0];
+
+    if (incident.status !== 'firing') {
+      throw new Error(`Incident ${incidentId} can only be acknowledged when status is 'firing', current status: ${incident.status}`);
+    }
+
+    if (incident.acknowledged_at) {
+      throw new Error(`Incident ${incidentId} is already acknowledged at ${incident.acknowledged_at}`);
+    }
+
+    const acknowledgeTime = new Date();
+
+    // Update the incident with acknowledgment details
+    await client.query(`
+      UPDATE alert_incidents 
+      SET acknowledged_at = $1,
+          acknowledged_by = 'default_user',
+          updated_at = $1
+      WHERE id = $2
+    `, [acknowledgeTime, incidentId]);
+
+    // Create acknowledgment event
+    const eventData = {
+      acknowledged_via: 'manual_api',
+      api_timestamp: acknowledgeTime.toISOString(),
+      acknowledged_by: 'default_user',
+      original_incident_start: incident.incident_start
+    };
+
+    const eventResult = await client.query(`
+      INSERT INTO alert_events (
+        incident_id,
+        event_type,
+        event_time,
+        event_data
+      )
+      VALUES ($1, 'acknowledged', $2, $3)
+      RETURNING id
+    `, [incidentId, acknowledgeTime, JSON.stringify(eventData)]);
+
+    const eventId = eventResult.rows[0].id;
+
+    logger.info({ 
+      incidentId, 
+      eventId, 
+      acknowledgeTime: acknowledgeTime.toISOString() 
+    }, 'Incident acknowledged');
+
+    return {
+      incidentId,
+      eventId,
+      action: 'updated', // Acknowledgment is a type of update
+      isNewIncident: false
+    };
+
+  } catch (error) {
+    logger.error({ error }, 'Error acknowledging manual alert');
+    throw error;
+  }
+}
+
+/**
  * Map incident processing result to legacy alert result format
  */
 function mapIncidentResultToAlertResult(

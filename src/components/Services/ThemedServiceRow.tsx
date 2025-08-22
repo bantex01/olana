@@ -1,7 +1,8 @@
 import React from 'react';
 import { Tag, Space, theme } from 'antd';
-import { AlertOutlined, ClockCircleOutlined, NumberOutlined, DownOutlined, RightOutlined } from '@ant-design/icons';
+import { AlertOutlined, ClockCircleOutlined, NumberOutlined, DownOutlined, RightOutlined, FieldTimeOutlined } from '@ant-design/icons';
 import type { ServiceGroup } from '../../types';
+import { calculateMTTA, formatMTTA } from '../../utils/mttaCalculations';
 
 interface ThemedServiceRowProps {
   serviceGroup: ServiceGroup;
@@ -72,6 +73,12 @@ export const ThemedServiceRow: React.FC<ThemedServiceRowProps> = ({
 
   const severityStyle = getSeverityStyle(serviceGroup.highestSeverity);
 
+  // Calculate service-level MTTA
+  const serviceMTTA = calculateMTTA(serviceGroup.alerts);
+  
+  // Calculate acknowledged count for this service
+  const acknowledgedCount = serviceGroup.alerts.filter(alert => alert.acknowledged_at).length;
+
   const handleClick = () => {
     onToggleExpand(serviceGroup.serviceKey);
   };
@@ -137,6 +144,20 @@ export const ThemedServiceRow: React.FC<ThemedServiceRowProps> = ({
             <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
               <NumberOutlined style={{ marginRight: '4px' }} />
               {serviceGroup.alertCount} alert{serviceGroup.alertCount !== 1 ? 's' : ''}
+              {serviceGroup.alertCount > 0 && (
+                <span style={{ 
+                  color: acknowledgedCount === serviceGroup.alertCount ? '#52c41a' : '#ff4d4f',
+                  marginLeft: '4px',
+                  fontWeight: 500
+                }}>
+                  ({acknowledgedCount} acked)
+                </span>
+              )}
+            </span>
+            
+            <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+              <FieldTimeOutlined style={{ marginRight: '4px' }} />
+              MTTA: {formatMTTA(serviceMTTA)}
             </span>
             
             <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>

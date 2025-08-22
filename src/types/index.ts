@@ -13,6 +13,8 @@ export type Alert = {
   resolved_at: string | null;
   alert_source: string;
   external_alert_id: string;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
 };
 
 export type Node = {

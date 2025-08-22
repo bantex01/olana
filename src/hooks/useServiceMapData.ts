@@ -152,9 +152,13 @@ export const useServiceMapData = (): UseServiceMapDataReturn => {
         const severity = alert.severity as keyof AlertSeverityBreakdown;
         
         if (alertBreakdown[severity]) {
-          // For now, all alerts are "open" since acknowledged status doesn't exist yet
-          alertBreakdown[severity].open++;
-          // acknowledged count stays at 0 until that status is implemented
+          if (alert.acknowledged_at) {
+            // Alert has been acknowledged
+            alertBreakdown[severity].acknowledged++;
+          } else {
+            // Alert is still open (unacknowledged)
+            alertBreakdown[severity].open++;
+          }
         }
       });
 

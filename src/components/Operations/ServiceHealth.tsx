@@ -1,12 +1,14 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import { Collapse, Alert, Row, Col, Space } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
 import { AlertsFilters } from '../Incidents/AlertsFilters';
 import { useFilterState } from '../../hooks/useFilterState';
 import { useServiceMapData } from '../../hooks/useServiceMapData';
 import { useServiceHealth } from '../../hooks/useServiceHealth';
-import { ArrangeByControl, SortByControl } from '../Controls';
+import { ArrangeByControl, SortByControl, AckFilter } from '../Controls';
+import type { AckFilterOption } from '../Controls/AckFilter';
 import { ServicesList } from '../Services/ServicesList';
+import { calculateMTTA } from '../../utils/mttaCalculations';
 import {
   ServicesWithIssuesCard,
   TotalOpenAlertsCard,
@@ -15,8 +17,7 @@ import {
   FatalAlertsCard,
   CriticalAlertsCard,
   WarningAlertsCard,
-  MTTACard,
-  MTTRCard
+  MTTACard
 } from '../Cards';
 
 
@@ -28,7 +29,18 @@ export const ServiceHealth: React.FC = () => {
   const { data, fetchData } = useServiceMapData();
   
   // Use service health hook for service groups
-  const { serviceGroups, loading: servicesLoading, error: servicesError, fetchServiceGroups } = useServiceHealth();
+  const { 
+    serviceGroups, 
+    //performanceMetrics, 
+    loading: servicesLoading, 
+    error: servicesError, 
+    acknowledgingAlerts,
+    fetchServiceGroups,
+    acknowledgeAlert
+  } = useServiceHealth();
+
+  // Acknowledgment filter state
+  const [ackFilter, setAckFilter] = useState<AckFilterOption>('all');
 
   // Memoize the fetch function to prevent infinite loops
   const memoizedFetchData = useCallback(async () => {
@@ -64,10 +76,31 @@ export const ServiceHealth: React.FC = () => {
     memoizedFetchData();
   }, [memoizedFetchData]);
 
+  // Apply acknowledgment filter to service groups
+  const filteredServiceGroups = useMemo(() => {
+    if (ackFilter === 'all') {
+      return serviceGroups;
+    }
+
+    return serviceGroups.filter(serviceGroup => {
+      const acknowledgedCount = serviceGroup.alerts.filter(alert => alert.acknowledged_at).length;
+      const totalCount = serviceGroup.alerts.length;
+
+      if (ackFilter === 'acknowledged') {
+        return acknowledgedCount > 0; // Has at least one acknowledged alert
+      } else if (ackFilter === 'unacknowledged') {
+        return acknowledgedCount < totalCount; // Has at least one unacknowledged alert
+      }
+
+      return true;
+    });
+  }, [serviceGroups, ackFilter]);
+
   // Handle retry on error
   const handleRetry = async () => {
     await memoizedFetchData();
   };
+
 
   // Calculate card metrics from filtered data
   const calculateMetrics = () => {
@@ -78,8 +111,8 @@ export const ServiceHealth: React.FC = () => {
     const criticalAlerts = alerts.filter(alert => alert.severity === 'critical').length;
     const warningAlerts = alerts.filter(alert => alert.severity === 'warning').length;
     
-    // Calculate unacknowledged alerts (placeholder logic - assuming status 'firing' means unacknowledged)
-    const unacknowledgedAlerts = alerts.filter(alert => alert.status === 'firing').length;
+    // Calculate unacknowledged alerts using acknowledgment data
+    const unacknowledgedAlerts = alerts.filter(alert => alert.status === 'firing' && !alert.acknowledged_at).length;
     
     // Calculate total duration open for all active alerts
     const totalDurationOpen = alerts.reduce((total, alert) => {
@@ -90,6 +123,10 @@ export const ServiceHealth: React.FC = () => {
       return total;
     }, 0);
 
+    // Calculate contextual MTTA from filtered alerts visible on page
+    const allVisibleAlerts = serviceGroups.flatMap(group => group.alerts);
+    const contextualMTTA = calculateMTTA(allVisibleAlerts);
+
     return {
       servicesWithIssues: data.systemHealth.servicesWithIssues,
       totalOpenAlerts: data.systemHealth.totalOpenAlerts,
@@ -97,7 +134,8 @@ export const ServiceHealth: React.FC = () => {
       totalDurationOpen,
       fatalAlerts,
       criticalAlerts,
-      warningAlerts
+      warningAlerts,
+      contextualMTTA
     };
   };
 
@@ -161,27 +199,21 @@ export const ServiceHealth: React.FC = () => {
 
       {/* System Overview Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={6}>
+        <Col span={8}>
           <TotalOpenAlertsCard 
             value={metrics.totalOpenAlerts} 
             loading={data.loading} 
           />
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <ServicesWithIssuesCard 
             value={metrics.servicesWithIssues} 
             loading={data.loading} 
           />
         </Col>
-        <Col span={6}>
+        <Col span={8}>
           <UnacknowledgedAlertsCard 
             value={metrics.unacknowledgedAlerts} 
-            loading={data.loading} 
-          />
-        </Col>
-        <Col span={6}>
-          <TotalDurationOpenCard 
-            value={metrics.totalDurationOpen} 
             loading={data.loading} 
           />
         </Col>
@@ -190,17 +222,16 @@ export const ServiceHealth: React.FC = () => {
       {/* Performance Metrics Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={12}>
-          <MTTACard 
-            value="12.5" 
+          <TotalDurationOpenCard 
+            value={metrics.totalDurationOpen} 
             loading={data.loading} 
-            isPlaceholder={true} 
           />
         </Col>
         <Col span={12}>
-          <MTTRCard 
-            value="45.8" 
-            loading={data.loading} 
-            isPlaceholder={true} 
+          <MTTACard 
+            value={metrics.contextualMTTA > 0 ? metrics.contextualMTTA.toFixed(1) : "0"} 
+            loading={data.loading || servicesLoading} 
+            isPlaceholder={metrics.contextualMTTA === 0} 
           />
         </Col>
       </Row>
@@ -251,21 +282,29 @@ export const ServiceHealth: React.FC = () => {
               <SortByControl
                 sortConfig={filterState.sortConfig}
                 onSortChange={filterActions.handleSortChange}
-                availableOptions={['severity', 'alertCount', 'duration', 'activity', 'service', 'namespace']}
+                availableOptions={['severity', 'alertCount', 'duration', 'activity', 'mtta', 'service', 'namespace']}
                 disabled={data.loading || servicesLoading}
               />
             </div>
           </div>
+
+          <AckFilter
+            value={ackFilter}
+            onChange={setAckFilter}
+            disabled={data.loading || servicesLoading}
+          />
         </Space>
       </div>
 
       {/* Services List with Expandable Drill-Downs */}
       <ServicesList
         key="services-list" // Maintain component identity across re-renders
-        serviceGroups={serviceGroups}
+        serviceGroups={filteredServiceGroups}
         arrangement={filterState.arrangement}
         sortConfig={filterState.sortConfig}
         loading={servicesLoading}
+        onAcknowledgeAlert={acknowledgeAlert}
+        acknowledgingAlerts={acknowledgingAlerts}
       />
     </div>
   );

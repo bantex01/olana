@@ -6,9 +6,15 @@ import type { ServiceGroup } from '../../types';
 
 interface ThemedExpandedAlertsProps {
   serviceGroup: ServiceGroup;
+  onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  acknowledgingAlerts?: Set<number>;
 }
 
-export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({ serviceGroup }) => {
+export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({ 
+  serviceGroup, 
+  onAcknowledgeAlert,
+  acknowledgingAlerts 
+}) => {
   // Sort alerts by severity (fatal > critical > warning) then by first_seen (oldest first)
   const sortedAlerts = [...serviceGroup.alerts].sort((a, b) => {
     const severityRank = { fatal: 1, critical: 2, warning: 3, none: 4 };
@@ -75,12 +81,14 @@ export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({ serv
         {sortedAlerts.map((alert, index) => (
           <ThemedAlertRow 
             key={alert.alert_id || index} 
-            alert={alert} 
+            alert={alert}
+            onAcknowledgeAlert={onAcknowledgeAlert}
+            acknowledgingAlerts={acknowledgingAlerts}
           />
         ))}
       </div>
 
-      {/* Footer with instructions */}
+      {/* Footer with acknowledgment info */}
       <div style={{
         padding: '8px 16px',
         backgroundColor: 'var(--bg-tertiary)',
@@ -89,7 +97,10 @@ export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({ serv
         color: 'var(--text-secondary)',
         fontStyle: 'italic'
       }}>
-        Individual alert actions (resolve, acknowledge) will be added in future steps
+        {onAcknowledgeAlert ? 
+          'Use acknowledge buttons to mark alerts as handled' : 
+          'Acknowledgment functionality not available in this view'
+        }
       </div>
     </div>
   );
