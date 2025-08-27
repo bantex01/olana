@@ -1,19 +1,23 @@
 import React from 'react';
 import { Tag, Space, Tooltip } from 'antd';
 import { AlertOutlined, ClockCircleOutlined, UserOutlined, NumberOutlined } from '@ant-design/icons';
-import { AcknowledgeButton, AcknowledgmentInfo } from '../Cards/Services';
+import { AcknowledgeButton, ResolveButton, AcknowledgmentInfo } from '../Cards/Services';
 import type { Alert } from '../../types';
 
 interface ThemedAlertRowProps {
   alert: Alert;
   onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  onResolveAlert?: (alertId: number) => Promise<void>;
   acknowledgingAlerts?: Set<number>;
+  resolvingAlerts?: Set<number>;
 }
 
 export const ThemedAlertRow: React.FC<ThemedAlertRowProps> = ({ 
   alert, 
   onAcknowledgeAlert,
-  acknowledgingAlerts 
+  onResolveAlert,
+  acknowledgingAlerts,
+  resolvingAlerts
 }) => {
   // Get severity color and styling (keep severity colors, but use theme-aware backgrounds)
   const getSeverityProps = (severity: string) => {
@@ -140,23 +144,36 @@ export const ThemedAlertRow: React.FC<ThemedAlertRowProps> = ({
         <span>Last seen: {formatLastSeen(alert.last_seen)}</span>
       </div>
 
-      {/* Acknowledgment section */}
-      {onAcknowledgeAlert && (
+      {/* Acknowledgment and Resolution section */}
+      {(onAcknowledgeAlert || onResolveAlert) && (
         <div style={{
           marginTop: '12px',
           padding: '8px 0',
           borderTop: '1px solid var(--border)',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'flex-start'
         }}>
-          <AcknowledgeButton
-            alertId={alert.alert_id}
-            isAcknowledged={!!alert.acknowledged_at}
-            onAcknowledge={onAcknowledgeAlert}
-            loading={acknowledgingAlerts?.has(alert.alert_id) || false}
-            size="small"
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {onAcknowledgeAlert && (
+              <AcknowledgeButton
+                alertId={alert.alert_id}
+                isAcknowledged={!!alert.acknowledged_at}
+                onAcknowledge={onAcknowledgeAlert}
+                loading={acknowledgingAlerts?.has(alert.alert_id) || false}
+                size="small"
+              />
+            )}
+            {onResolveAlert && (
+              <ResolveButton
+                alertId={alert.alert_id}
+                isResolved={!!alert.resolved_at}
+                onResolve={onResolveAlert}
+                loading={resolvingAlerts?.has(alert.alert_id) || false}
+                size="small"
+              />
+            )}
+          </div>
           
           <div style={{ 
             display: 'flex', 

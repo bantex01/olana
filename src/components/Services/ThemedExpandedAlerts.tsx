@@ -7,13 +7,17 @@ import type { ServiceGroup } from '../../types';
 interface ThemedExpandedAlertsProps {
   serviceGroup: ServiceGroup;
   onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  onResolveAlert?: (alertId: number) => Promise<void>;
   acknowledgingAlerts?: Set<number>;
+  resolvingAlerts?: Set<number>;
 }
 
 export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({ 
   serviceGroup, 
   onAcknowledgeAlert,
-  acknowledgingAlerts 
+  onResolveAlert,
+  acknowledgingAlerts,
+  resolvingAlerts
 }) => {
   // Sort alerts by severity (fatal > critical > warning) then by first_seen (oldest first)
   const sortedAlerts = [...serviceGroup.alerts].sort((a, b) => {
@@ -83,7 +87,9 @@ export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({
             key={alert.alert_id || index} 
             alert={alert}
             onAcknowledgeAlert={onAcknowledgeAlert}
+            onResolveAlert={onResolveAlert}
             acknowledgingAlerts={acknowledgingAlerts}
+            resolvingAlerts={resolvingAlerts}
           />
         ))}
       </div>
@@ -97,9 +103,9 @@ export const ThemedExpandedAlerts: React.FC<ThemedExpandedAlertsProps> = ({
         color: 'var(--text-secondary)',
         fontStyle: 'italic'
       }}>
-        {onAcknowledgeAlert ? 
-          'Use acknowledge buttons to mark alerts as handled' : 
-          'Acknowledgment functionality not available in this view'
+        {(onAcknowledgeAlert || onResolveAlert) ? 
+          'Use acknowledge and resolve buttons to manage alerts' : 
+          'Alert management functionality not available in this view'
         }
       </div>
     </div>

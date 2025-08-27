@@ -94,6 +94,10 @@ npm run db:migrate:prod
 # Frontend automatically deploys to Vercel on git push
 ```
 
+# If you are asked to make any database changes please refer to:
+DATABASE_OPERATIONS.md
+schema.sql - which contains a dump of the curent schema
+
 ### Database Operations
 - **Local Testing**: `.env.migration.local` for local PostgreSQL
 - **Production Updates**: `.env.migration.prod` for Supabase

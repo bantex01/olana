@@ -46,7 +46,6 @@ CREATE MATERIALIZED VIEW alert_analytics_hourly AS
 -- Recreate the unique index
 CREATE UNIQUE INDEX idx_alert_analytics_hourly_unique ON alert_analytics_hourly USING btree (hour, service_namespace, service_name, severity);
 
--- Set ownership
-ALTER MATERIALIZED VIEW alert_analytics_hourly OWNER TO adalton;
+-- Ownership will be handled by Supabase automatically
 
 COMMIT;

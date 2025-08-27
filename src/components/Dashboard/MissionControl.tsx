@@ -10,6 +10,7 @@ import { ServiceMapEasy } from '../ServiceMap';
 import { AlertTimeChart } from './AlertTimeChart';
 import { useFilterState } from '../../hooks/useFilterState';
 import { useServiceMapData } from '../../hooks/useServiceMapData';
+import { useAnalytics } from '../../hooks/useAnalytics';
 import {
   TotalServicesCard,
   ServicesWithIssuesCard,
@@ -42,6 +43,10 @@ export const MissionControl: React.FC<MissionControlProps> = ({ onLastUpdatedCha
   
   // Use reusable service map data hook (for accessing system stats)
   const { data, serviceMapData, fetchData } = useServiceMapData();
+  
+  // Use analytics hook for global performance metrics
+  const { data: analytics24h, loading: analytics24hLoading, fetchAnalytics: fetchAnalytics24h } = useAnalytics();
+  const { data: analyticsOverall, loading: analyticsOverallLoading, fetchAnalytics: fetchAnalyticsOverall } = useAnalytics();
 
   // Memoize the fetch function to prevent infinite loops (EXACTLY like original)
   const memoizedFetchData = useCallback(async () => {
@@ -56,7 +61,12 @@ export const MissionControl: React.FC<MissionControlProps> = ({ onLastUpdatedCha
       showFullChain: filterState.showFullChain
     };
     
-    await fetchData(filters, options);
+    // Fetch all data in parallel
+    await Promise.all([
+      fetchData(filters, options),
+      fetchAnalytics24h(filters, 24),
+      fetchAnalyticsOverall(filters, 87600) // 10 years for "overall" metrics (whole DB)
+    ]);
     
     // Update last updated timestamp
     const now = new Date();
@@ -69,6 +79,8 @@ export const MissionControl: React.FC<MissionControlProps> = ({ onLastUpdatedCha
     filterState.includeDependentNamespaces, 
     filterState.showFullChain,
     fetchData,
+    fetchAnalytics24h,
+    fetchAnalyticsOverall,
     onLastUpdatedChange
   ]);
 
@@ -181,34 +193,34 @@ export const MissionControl: React.FC<MissionControlProps> = ({ onLastUpdatedCha
         </Col>
       </Row>
 
-      {/* Performance Metrics Cards (EXACTLY like original) */}
+      {/* Performance Metrics Cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
           <MTTACard 
-            value="12.5" 
-            loading={data.loading} 
-            isPlaceholder={true} 
+            value={analyticsOverall?.mtta?.average_minutes ? analyticsOverall.mtta.average_minutes.toFixed(1) : "0"} 
+            loading={data.loading || analyticsOverallLoading} 
+            isPlaceholder={!analyticsOverall?.mtta?.average_minutes} 
           />
         </Col>
         <Col span={6}>
           <MTTALast24hCard 
-            value="8.2" 
-            loading={data.loading} 
-            isPlaceholder={true} 
+            value={analytics24h?.mtta?.average_minutes ? analytics24h.mtta.average_minutes.toFixed(1) : "0"} 
+            loading={data.loading || analytics24hLoading} 
+            isPlaceholder={!analytics24h?.mtta?.average_minutes} 
           />
         </Col>
         <Col span={6}>
           <MTTRCard 
-            value="45.8" 
-            loading={data.loading} 
-            isPlaceholder={true} 
+            value={analyticsOverall?.mttr?.average_minutes ? analyticsOverall.mttr.average_minutes.toFixed(1) : "0"} 
+            loading={data.loading || analyticsOverallLoading} 
+            isPlaceholder={!analyticsOverall?.mttr?.average_minutes} 
           />
         </Col>
         <Col span={6}>
           <MTTRLast24hCard 
-            value="32.1" 
-            loading={data.loading} 
-            isPlaceholder={true} 
+            value={analytics24h?.mttr?.average_minutes ? analytics24h.mttr.average_minutes.toFixed(1) : "0"} 
+            loading={data.loading || analytics24hLoading} 
+            isPlaceholder={!analytics24h?.mttr?.average_minutes} 
           />
         </Col>
       </Row>

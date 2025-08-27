@@ -14,7 +14,9 @@ interface ServicesListProps {
   sortConfig: SortConfig;
   loading?: boolean;
   onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  onResolveAlert?: (alertId: number) => Promise<void>;
   acknowledgingAlerts?: Set<number>;
+  resolvingAlerts?: Set<number>;
 }
 
 export const ServicesList: React.FC<ServicesListProps> = ({
@@ -23,7 +25,9 @@ export const ServicesList: React.FC<ServicesListProps> = ({
   sortConfig,
   loading = false,
   onAcknowledgeAlert,
-  acknowledgingAlerts
+  onResolveAlert,
+  acknowledgingAlerts,
+  resolvingAlerts
 }) => {
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
 
@@ -169,7 +173,9 @@ export const ServicesList: React.FC<ServicesListProps> = ({
                   <RichServiceDrillDown 
                     serviceGroup={serviceGroup}
                     onAcknowledgeAlert={onAcknowledgeAlert}
+                    onResolveAlert={onResolveAlert}
                     acknowledgingAlerts={acknowledgingAlerts}
+                    resolvingAlerts={resolvingAlerts}
                   />
                 )}
               </div>

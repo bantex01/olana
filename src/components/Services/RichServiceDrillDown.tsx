@@ -13,13 +13,17 @@ const { Title } = Typography;
 interface RichServiceDrillDownProps {
   serviceGroup: ServiceGroup;
   onAcknowledgeAlert?: (alertId: number) => Promise<void>;
+  onResolveAlert?: (alertId: number) => Promise<void>;
   acknowledgingAlerts?: Set<number>;
+  resolvingAlerts?: Set<number>;
 }
 
 export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({ 
   serviceGroup,
   onAcknowledgeAlert,
-  acknowledgingAlerts
+  onResolveAlert,
+  acknowledgingAlerts,
+  resolvingAlerts
 }) => {
   // Use reusable filter state hook
   const { state: filterState } = useFilterState();
@@ -82,7 +86,9 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
             <ThemedExpandedAlerts 
               serviceGroup={serviceGroup} 
               onAcknowledgeAlert={onAcknowledgeAlert}
+              onResolveAlert={onResolveAlert}
               acknowledgingAlerts={acknowledgingAlerts}
+              resolvingAlerts={resolvingAlerts}
             />
           </Card>
         </Col>
