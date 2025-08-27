@@ -1,5 +1,6 @@
 // Acknowledgment components - following card library patterns
 export { AcknowledgeButton } from './AcknowledgeButton';
+export { ResolveButton } from './ResolveButton';
 export { AlertStatusBadge } from './AlertStatusBadge';
 export { AcknowledgmentInfo } from './AcknowledgmentInfo';
 

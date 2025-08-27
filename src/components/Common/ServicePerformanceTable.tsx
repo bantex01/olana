@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Typography, Space, Button } from 'antd';
 import type { SortOrder } from 'antd/es/table/interface';
 import { ClearOutlined } from '@ant-design/icons';
 import type { Node } from '../../types';
+import { API_BASE_URL } from '../../utils/api';
+import { logger } from '../../utils/logger';
 
 const { Text } = Typography;
 
@@ -28,54 +30,101 @@ export const ServicePerformanceTable: React.FC<ServicePerformanceTableProps> = (
   loading = false
 }) => {
   const tableRef = React.useRef<any>(null);
-  // Generate dummy performance data based on filtered service nodes
-  const generatePerformanceData = (): ServicePerformance[] => {
-    const serviceMap = new Map<string, ServicePerformance>();
-    
-    // Generate performance data for all filtered services
-    serviceNodes
-      .filter(node => node.nodeType === 'service')
-      .forEach(serviceNode => {
-        // Parse service name and namespace from node ID (format: namespace::serviceName)
-        const [namespace, serviceName] = serviceNode.id.split('::');
-        const serviceId = serviceNode.id;
-        
-        if (!serviceMap.has(serviceId) && serviceName && namespace) {
-          // Generate realistic dummy performance data
-          const mttaTarget = Math.floor(Math.random() * 30) + 15; // 15-45 min targets
-          const mttrTarget = Math.floor(Math.random() * 60) + 30; // 30-90 min targets
-          
-          // Generate performance values that sometimes exceed targets
-          const mtta24h = Math.floor(Math.random() * 60) + 5; // 5-65 min
-          const mttaOverall = Math.floor(Math.random() * 50) + 10; // 10-60 min
-          const mttr24h = Math.floor(Math.random() * 120) + 15; // 15-135 min
-          const mttrOverall = Math.floor(Math.random() * 90) + 20; // 20-110 min
-          
-          serviceMap.set(serviceId, {
-            serviceName,
-            serviceNamespace: namespace,
-            fullServiceId: serviceId,
-            mtta24h,
-            mttaOverall,
+  const [performanceData, setPerformanceData] = useState<ServicePerformance[]>([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  // Fetch real analytics data for each service
+  const fetchServiceAnalytics = useCallback(async () => {
+    if (serviceNodes.length === 0) {
+      setPerformanceData([]);
+      return;
+    }
+
+    setAnalyticsLoading(true);
+    try {
+      logger.debug('Fetching service analytics', { serviceCount: serviceNodes.length });
+
+      const services = serviceNodes
+        .filter(node => node.nodeType === 'service')
+        .map(node => {
+          const [namespace, serviceName] = node.id.split('::');
+          return { namespace, serviceName, nodeId: node.id };
+        })
+        .filter(service => service.namespace && service.serviceName);
+
+      if (services.length === 0) {
+        setPerformanceData([]);
+        return;
+      }
+
+      // Fetch analytics for each service (24h and overall) - no additional filters needed since services are already filtered
+      const analyticsPromises = services.map(async (service) => {
+        try {
+          const [analytics24h, analyticsOverall] = await Promise.all([
+            fetch(`${API_BASE_URL}/alerts/analytics/service/${service.namespace}/${service.serviceName}?hours=24`),
+            fetch(`${API_BASE_URL}/alerts/analytics/service/${service.namespace}/${service.serviceName}?hours=87600`) // Whole DB
+          ]);
+
+          const data24h = analytics24h.ok ? await analytics24h.json() : null;
+          const dataOverall = analyticsOverall.ok ? await analyticsOverall.json() : null;
+
+          // Default target values (could be configurable)
+          const mttaTarget = 30; // 30 minutes
+          const mttrTarget = 60; // 60 minutes
+
+          return {
+            serviceName: service.serviceName,
+            serviceNamespace: service.namespace,
+            fullServiceId: service.nodeId,
+            mtta24h: data24h?.mtta?.average_minutes || 0,
+            mttaOverall: dataOverall?.mtta?.average_minutes || 0,
             mttaTarget,
-            mttr24h,
-            mttrOverall,
+            mttr24h: data24h?.mttr?.average_minutes || 0,
+            mttrOverall: dataOverall?.mttr?.average_minutes || 0,
             mttrTarget
-          });
+          };
+        } catch (error) {
+          logger.error('Failed to fetch analytics for service', { service, error });
+          return {
+            serviceName: service.serviceName,
+            serviceNamespace: service.namespace,
+            fullServiceId: service.nodeId,
+            mtta24h: 0,
+            mttaOverall: 0,
+            mttaTarget: 30,
+            mttr24h: 0,
+            mttrOverall: 0,
+            mttrTarget: 60
+          };
         }
       });
-    
-    return Array.from(serviceMap.values()).sort((a, b) => 
-      a.serviceName.localeCompare(b.serviceName)
-    );
-  };
+
+      const results = await Promise.all(analyticsPromises);
+      const sortedResults = results.sort((a, b) => a.serviceName.localeCompare(b.serviceName));
+      
+      logger.debug('Service analytics fetched', { resultCount: sortedResults.length });
+      setPerformanceData(sortedResults);
+    } catch (error) {
+      logger.error('Failed to fetch service analytics', { error });
+      setPerformanceData([]);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [serviceNodes]);
+
+  // Fetch data when dependencies change
+  useEffect(() => {
+    fetchServiceAnalytics();
+  }, [fetchServiceAnalytics]);
+
   
   const formatTime = (minutes: number): string => {
-    if (minutes < 60) {
-      return `${minutes}m`;
+    const roundedMinutes = Math.round(minutes);
+    if (roundedMinutes < 60) {
+      return `${roundedMinutes}m`;
     }
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+    const hours = Math.floor(roundedMinutes / 60);
+    const mins = roundedMinutes % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
   
@@ -166,7 +215,7 @@ export const ServicePerformanceTable: React.FC<ServicePerformanceTableProps> = (
     }
   ];
   
-  const data = generatePerformanceData();
+  // Use real fetched data instead of generated dummy data
   
   return (
     <div>
@@ -182,9 +231,9 @@ export const ServicePerformanceTable: React.FC<ServicePerformanceTableProps> = (
       <Table
         ref={tableRef}
         columns={columns}
-        dataSource={data}
+        dataSource={performanceData}
         rowKey="fullServiceId"
-        loading={loading}
+        loading={loading || analyticsLoading}
         pagination={{
           pageSize: 10,
           showSizeChanger: true,

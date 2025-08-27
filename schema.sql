@@ -59,6 +59,21 @@ $$;
 ALTER FUNCTION public.cleanup_old_alert_events(days_old integer) OWNER TO adalton;
 
 --
+-- Name: refresh_services_overview_cache(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.refresh_services_overview_cache() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY services_overview_cache;
+END;
+$$;
+
+
+ALTER FUNCTION public.refresh_services_overview_cache() OWNER TO postgres;
+
+--
 -- Name: update_alert_incidents_updated_at(); Type: FUNCTION; Schema: public; Owner: adalton
 --
 
@@ -148,7 +163,7 @@ CREATE TABLE public.alert_events (
     event_time timestamp without time zone NOT NULL,
     event_data jsonb DEFAULT '{}'::jsonb,
     created_at timestamp without time zone DEFAULT now(),
-    CONSTRAINT alert_events_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['fired'::character varying, 'resolved'::character varying, 'updated'::character varying])::text[])))
+    CONSTRAINT alert_events_event_type_check CHECK (((event_type)::text = ANY ((ARRAY['fired'::character varying, 'resolved'::character varying, 'updated'::character varying, 'acknowledged'::character varying])::text[])))
 );
 
 
@@ -201,6 +216,8 @@ CREATE TABLE public.alert_incidents (
     external_alert_id character varying(255),
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
+    acknowledged_at timestamp without time zone,
+    acknowledged_by character varying(255),
     CONSTRAINT alert_incidents_severity_check CHECK (((severity)::text = ANY ((ARRAY['fatal'::character varying, 'critical'::character varying, 'warning'::character varying, 'none'::character varying])::text[]))),
     CONSTRAINT alert_incidents_status_check CHECK (((status)::text = ANY ((ARRAY['firing'::character varying, 'resolved'::character varying])::text[]))),
     CONSTRAINT check_incident_end_after_start CHECK (((incident_end IS NULL) OR (incident_end >= incident_start)))
@@ -245,6 +262,20 @@ COMMENT ON COLUMN public.alert_incidents.status IS 'Current status: firing (acti
 
 
 --
+-- Name: COLUMN alert_incidents.acknowledged_at; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_incidents.acknowledged_at IS 'Timestamp when the incident was acknowledged by a user';
+
+
+--
+-- Name: COLUMN alert_incidents.acknowledged_by; Type: COMMENT; Schema: public; Owner: adalton
+--
+
+COMMENT ON COLUMN public.alert_incidents.acknowledged_by IS 'User who acknowledged the incident (default_user for now)';
+
+
+--
 -- Name: active_incidents; Type: VIEW; Schema: public; Owner: adalton
 --
 
@@ -271,26 +302,6 @@ CREATE VIEW public.active_incidents AS
 
 ALTER VIEW public.active_incidents OWNER TO adalton;
 
---
--- Name: alert_analytics_hourly; Type: MATERIALIZED VIEW; Schema: public; Owner: adalton
---
-
-CREATE MATERIALIZED VIEW public.alert_analytics_hourly AS
- SELECT date_trunc('hour'::text, incident_start) AS hour,
-    service_namespace,
-    service_name,
-    severity,
-    count(*) AS incident_count,
-    count(*) FILTER (WHERE ((status)::text = 'resolved'::text)) AS resolved_count,
-    avg((EXTRACT(epoch FROM (incident_end - incident_start)) / (60)::numeric)) FILTER (WHERE (incident_end IS NOT NULL)) AS avg_duration_minutes
-   FROM public.alert_incidents
-  WHERE (incident_start >= (now() - '30 days'::interval))
-  GROUP BY (date_trunc('hour'::text, incident_start)), service_namespace, service_name, severity
-  ORDER BY (date_trunc('hour'::text, incident_start)) DESC
-  WITH NO DATA;
-
-
-ALTER MATERIALIZED VIEW public.alert_analytics_hourly OWNER TO adalton;
 
 --
 -- Name: alert_events_id_seq; Type: SEQUENCE; Schema: public; Owner: adalton
@@ -422,6 +433,43 @@ ALTER SEQUENCE public.namespace_dependencies_id_seq OWNED BY public.namespace_de
 
 
 --
+-- Name: schema_migrations; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.schema_migrations (
+    id integer NOT NULL,
+    migration_number character varying(10) NOT NULL,
+    migration_name character varying(255) NOT NULL,
+    applied_at timestamp without time zone DEFAULT now(),
+    checksum character varying(64)
+);
+
+
+ALTER TABLE public.schema_migrations OWNER TO postgres;
+
+--
+-- Name: schema_migrations_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.schema_migrations_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.schema_migrations_id_seq OWNER TO postgres;
+
+--
+-- Name: schema_migrations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.schema_migrations_id_seq OWNED BY public.schema_migrations.id;
+
+
+--
 -- Name: service_dependencies; Type: TABLE; Schema: public; Owner: adalton
 --
 
@@ -467,6 +515,87 @@ COMMENT ON COLUMN public.services.tag_sources IS 'JSONB object tracking source o
 
 
 --
+-- Name: services_overview_cache; Type: MATERIALIZED VIEW; Schema: public; Owner: postgres
+--
+
+CREATE MATERIALIZED VIEW public.services_overview_cache AS
+ WITH service_stats AS (
+         SELECT count(*) AS total_services,
+            count(*) FILTER (WHERE (services.last_seen > (now() - '24:00:00'::interval))) AS active_services,
+            count(*) FILTER (WHERE (services.last_seen < (now() - '7 days'::interval))) AS stale_services,
+            count(*) FILTER (WHERE (services.created_at > (now() - '24:00:00'::interval))) AS recently_discovered,
+            count(*) FILTER (WHERE (((services.team)::text = 'unknown'::text) OR ((services.environment)::text = 'unknown'::text))) AS missing_metadata,
+            count(DISTINCT services.service_namespace) AS total_namespaces,
+            count(DISTINCT services.environment) AS total_environments
+           FROM public.services
+        ), dependency_stats AS (
+         SELECT count(*) AS total_dependencies,
+            count(DISTINCT (((dep_counts.from_service_namespace)::text || '::'::text) || (dep_counts.from_service_name)::text)) AS services_with_deps,
+            max(dep_counts.dep_count) AS max_dependencies
+           FROM ( SELECT service_dependencies.from_service_namespace,
+                    service_dependencies.from_service_name,
+                    count(*) AS dep_count
+                   FROM public.service_dependencies
+                  GROUP BY service_dependencies.from_service_namespace, service_dependencies.from_service_name) dep_counts
+        ), enrichment_stats AS (
+         SELECT count(*) FILTER (WHERE (services.external_calls <> '[]'::jsonb)) AS services_with_external_calls,
+            count(*) FILTER (WHERE (services.database_calls <> '[]'::jsonb)) AS services_with_db_calls,
+            count(*) FILTER (WHERE (services.rpc_calls <> '[]'::jsonb)) AS services_with_rpc_calls,
+            count(*) AS total_services
+           FROM public.services
+        ), alert_stats AS (
+         SELECT count(DISTINCT (((alert_incidents.service_namespace)::text || '::'::text) || (alert_incidents.service_name)::text)) AS services_with_alerts,
+            count(*) FILTER (WHERE ((alert_incidents.severity)::text = 'critical'::text)) AS critical_alerts,
+            count(*) FILTER (WHERE ((alert_incidents.severity)::text = 'warning'::text)) AS warning_alerts,
+            count(*) FILTER (WHERE ((alert_incidents.severity)::text = 'fatal'::text)) AS fatal_alerts
+           FROM public.alert_incidents
+          WHERE ((alert_incidents.status)::text = 'firing'::text)
+        ), tag_stats AS (
+         SELECT count(*) FILTER (WHERE (array_length(services.tags, 1) > 0)) AS services_with_tags,
+            count(*) FILTER (WHERE ('alertmanager-created'::text = ANY (services.tags))) AS alertmanager_created,
+            count(*) AS total_services
+           FROM public.services
+        )
+ SELECT ss.total_services,
+    ss.active_services,
+    ss.stale_services,
+    ss.recently_discovered,
+    ss.missing_metadata,
+    ss.total_namespaces,
+    ss.total_environments,
+    ds.total_dependencies,
+    ds.services_with_deps,
+    ds.max_dependencies,
+    (ss.total_services - ds.services_with_deps) AS isolated_services,
+    es.services_with_external_calls,
+    es.services_with_db_calls,
+    es.services_with_rpc_calls,
+    als.services_with_alerts,
+    als.critical_alerts,
+    als.warning_alerts,
+    als.fatal_alerts,
+    ts.services_with_tags,
+    ts.alertmanager_created,
+        CASE
+            WHEN (ss.total_services > 0) THEN round((((ds.services_with_deps)::numeric / (ss.total_services)::numeric) * (100)::numeric))
+            ELSE (0)::numeric
+        END AS dependency_coverage,
+        CASE
+            WHEN (ts.total_services > 0) THEN round((((ts.services_with_tags)::numeric / (ts.total_services)::numeric) * (100)::numeric))
+            ELSE (0)::numeric
+        END AS tag_coverage,
+    now() AS last_updated
+   FROM service_stats ss,
+    dependency_stats ds,
+    enrichment_stats es,
+    alert_stats als,
+    tag_stats ts
+  WITH NO DATA;
+
+
+ALTER MATERIALIZED VIEW public.services_overview_cache OWNER TO postgres;
+
+--
 -- Name: alert_events id; Type: DEFAULT; Schema: public; Owner: adalton
 --
 
@@ -485,6 +614,13 @@ ALTER TABLE ONLY public.alert_incidents ALTER COLUMN id SET DEFAULT nextval('pub
 --
 
 ALTER TABLE ONLY public.namespace_dependencies ALTER COLUMN id SET DEFAULT nextval('public.namespace_dependencies_id_seq'::regclass);
+
+
+--
+-- Name: schema_migrations id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schema_migrations ALTER COLUMN id SET DEFAULT nextval('public.schema_migrations_id_seq'::regclass);
 
 
 --
@@ -528,6 +664,22 @@ ALTER TABLE ONLY public.namespace_dependencies
 
 
 --
+-- Name: schema_migrations schema_migrations_migration_number_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_migration_number_key UNIQUE (migration_number);
+
+
+--
+-- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schema_migrations
+    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: service_dependencies service_dependencies_pkey; Type: CONSTRAINT; Schema: public; Owner: adalton
 --
 
@@ -543,11 +695,6 @@ ALTER TABLE ONLY public.services
     ADD CONSTRAINT services_pkey PRIMARY KEY (service_namespace, service_name);
 
 
---
--- Name: idx_alert_analytics_hourly_unique; Type: INDEX; Schema: public; Owner: adalton
---
-
-CREATE UNIQUE INDEX idx_alert_analytics_hourly_unique ON public.alert_analytics_hourly USING btree (hour, service_namespace, service_name, severity);
 
 
 --
@@ -576,6 +723,20 @@ CREATE INDEX idx_alert_events_time_desc ON public.alert_events USING btree (even
 --
 
 CREATE INDEX idx_alert_events_type_time ON public.alert_events USING btree (event_type, event_time);
+
+
+--
+-- Name: idx_alert_incidents_acknowledged_at; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_acknowledged_at ON public.alert_incidents USING btree (acknowledged_at);
+
+
+--
+-- Name: idx_alert_incidents_acknowledged_by; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_acknowledged_by ON public.alert_incidents USING btree (acknowledged_by);
 
 
 --
@@ -642,6 +803,13 @@ CREATE INDEX idx_alert_incidents_source ON public.alert_incidents USING btree (a
 
 
 --
+-- Name: idx_alert_incidents_start; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_alert_incidents_start ON public.alert_incidents USING btree (incident_start);
+
+
+--
 -- Name: idx_alert_incidents_status; Type: INDEX; Schema: public; Owner: adalton
 --
 
@@ -698,10 +866,31 @@ CREATE INDEX idx_service_dependencies_to ON public.service_dependencies USING bt
 
 
 --
+-- Name: idx_service_deps_from; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_service_deps_from ON public.service_dependencies USING btree (from_service_namespace, from_service_name);
+
+
+--
+-- Name: idx_service_deps_to; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_service_deps_to ON public.service_dependencies USING btree (to_service_namespace, to_service_name);
+
+
+--
 -- Name: idx_services_component_type; Type: INDEX; Schema: public; Owner: adalton
 --
 
 CREATE INDEX idx_services_component_type ON public.services USING btree (component_type);
+
+
+--
+-- Name: idx_services_created_at; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_created_at ON public.services USING btree (created_at);
 
 
 --
@@ -719,6 +908,20 @@ CREATE INDEX idx_services_last_seen ON public.services USING btree (last_seen);
 
 
 --
+-- Name: idx_services_namespace; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_namespace ON public.services USING btree (service_namespace);
+
+
+--
+-- Name: idx_services_namespace_name; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_namespace_name ON public.services USING btree (service_namespace, service_name);
+
+
+--
 -- Name: idx_services_tag_sources; Type: INDEX; Schema: public; Owner: adalton
 --
 
@@ -733,10 +936,24 @@ CREATE INDEX idx_services_tags ON public.services USING gin (tags);
 
 
 --
+-- Name: idx_services_tags_gin; Type: INDEX; Schema: public; Owner: adalton
+--
+
+CREATE INDEX idx_services_tags_gin ON public.services USING gin (tags);
+
+
+--
 -- Name: idx_services_team; Type: INDEX; Schema: public; Owner: adalton
 --
 
 CREATE INDEX idx_services_team ON public.services USING btree (team);
+
+
+--
+-- Name: services_overview_cache_unique; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX services_overview_cache_unique ON public.services_overview_cache USING btree (last_updated);
 
 
 --

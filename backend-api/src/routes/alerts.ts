@@ -451,7 +451,39 @@ export function createAlertsRoutes(pool: Pool): Router {
       const hours = parseInt(req.query.hours as string) || 24;
       const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
       
-      req.log.debug({ hours }, 'Getting analytics');
+      // Parse filters (same as alerts endpoint)
+      const filters: any = {};
+      if (req.query.tags) filters.tags = (req.query.tags as string).split(',');
+      if (req.query.namespaces) filters.namespaces = (req.query.namespaces as string).split(',');
+      if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
+      if (req.query.search) filters.search = req.query.search as string;
+      
+      req.log.debug({ hours, filters }, 'Getting analytics with filters');
+      
+      // Build WHERE conditions based on filters
+      const whereConditions: string[] = ['incident_start >= $1'];
+      const params: any[] = [cutoff];
+      let paramIndex = 2;
+      
+      if (filters.namespaces && filters.namespaces.length > 0) {
+        const placeholders = filters.namespaces.map(() => `$${paramIndex++}`).join(', ');
+        whereConditions.push(`service_namespace IN (${placeholders})`);
+        params.push(...filters.namespaces);
+      }
+      
+      if (filters.severities && filters.severities.length > 0) {
+        const placeholders = filters.severities.map(() => `$${paramIndex++}`).join(', ');
+        whereConditions.push(`severity IN (${placeholders})`);
+        params.push(...filters.severities);
+      }
+      
+      if (filters.search) {
+        whereConditions.push(`(message ILIKE $${paramIndex} OR service_name ILIKE $${paramIndex})`);
+        params.push(`%${filters.search}%`);
+        paramIndex++;
+      }
+      
+      const whereClause = whereConditions.join(' AND ');
       
       // Basic incident counts
       const countsResult = await client.query(`
@@ -462,8 +494,8 @@ export function createAlertsRoutes(pool: Pool): Router {
           COUNT(DISTINCT service_namespace || '::' || service_name) as affected_services,
           COUNT(DISTINCT alert_fingerprint) as unique_alert_types
         FROM alert_incidents 
-        WHERE incident_start >= $1
-      `, [cutoff]);
+        WHERE ${whereClause}
+      `, params);
 
       // MTTR (Mean Time To Resolution) calculation
       const mttrResult = await client.query(`
@@ -474,23 +506,29 @@ export function createAlertsRoutes(pool: Pool): Router {
           COUNT(*) as resolved_count
         FROM alert_incidents 
         WHERE status = 'resolved' 
-          AND incident_start >= $1 
           AND incident_end IS NOT NULL
-      `, [cutoff]);
+          AND ${whereClause}
+      `, params);
 
       // MTTA (Mean Time To Acknowledge) calculation
+      // Include ALL alerts - use acknowledged_at for acknowledged alerts, NOW() for unacknowledged
       const mttaResult = await client.query(`
         SELECT 
-          AVG(EXTRACT(EPOCH FROM (acknowledged_at - incident_start)) / 60) as avg_acknowledgment_minutes,
-          MIN(EXTRACT(EPOCH FROM (acknowledged_at - incident_start)) / 60) as fastest_acknowledgment_minutes,
-          MAX(EXTRACT(EPOCH FROM (acknowledged_at - incident_start)) / 60) as slowest_acknowledgment_minutes,
-          COUNT(*) as acknowledged_count
+          AVG(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as avg_acknowledgment_minutes,
+          MIN(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as fastest_acknowledgment_minutes,
+          MAX(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as slowest_acknowledgment_minutes,
+          COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) as acknowledged_count
         FROM alert_incidents 
-        WHERE acknowledged_at IS NOT NULL
-          AND incident_start >= $1
-      `, [cutoff]);
+        WHERE ${whereClause}
+      `, params);
 
-      // Most frequent alerts
+      // Most frequent alerts - need separate parameter for hours calculation
       const frequentAlertsResult = await client.query(`
         SELECT 
           service_namespace || '::' || service_name as service,
@@ -499,14 +537,14 @@ export function createAlertsRoutes(pool: Pool): Router {
           COUNT(*) as incident_count,
           MAX(incident_start) as last_occurrence,
           -- Calculate frequency (incidents per hour)
-          ROUND((COUNT(*)::decimal / $2), 2) as incidents_per_hour
+          ROUND((COUNT(*)::decimal / $${params.length + 1}), 2) as incidents_per_hour
         FROM alert_incidents 
-        WHERE incident_start >= $1
+        WHERE ${whereClause}
         GROUP BY service_namespace, service_name, severity, message
         HAVING COUNT(*) > 1
         ORDER BY incident_count DESC 
         LIMIT 10
-      `, [cutoff, hours]);
+      `, [...params, hours]);
 
       // Severity breakdown
       const severityResult = await client.query(`
@@ -516,7 +554,7 @@ export function createAlertsRoutes(pool: Pool): Router {
           COUNT(*) FILTER (WHERE status = 'firing') as active,
           COUNT(*) FILTER (WHERE status = 'resolved') as resolved
         FROM alert_incidents 
-        WHERE incident_start >= $1
+        WHERE ${whereClause}
         GROUP BY severity
         ORDER BY 
           CASE severity 
@@ -525,7 +563,7 @@ export function createAlertsRoutes(pool: Pool): Router {
             WHEN 'warning' THEN 3 
             WHEN 'none' THEN 4 
           END
-      `, [cutoff]);
+      `, params);
 
       // Hourly incident distribution
       const hourlyResult = await client.query(`
@@ -534,11 +572,11 @@ export function createAlertsRoutes(pool: Pool): Router {
           COUNT(*) as incidents,
           COUNT(DISTINCT service_namespace || '::' || service_name) as services_affected
         FROM alert_incidents 
-        WHERE incident_start >= $1
+        WHERE ${whereClause}
         GROUP BY DATE_TRUNC('hour', incident_start)
         ORDER BY hour DESC
         LIMIT 24
-      `, [cutoff]);
+      `, params);
 
       const counts = countsResult.rows[0];
       const mttr = mttrResult.rows[0];
@@ -703,51 +741,43 @@ export function createAlertsRoutes(pool: Pool): Router {
       
       req.log.debug({ namespace, serviceName, hours }, 'Getting service analytics');
       
-      // Use materialized view for efficient aggregation
+      // Query alert_incidents directly with corrected MTTA calculation
       const analyticsResult = await client.query(`
         SELECT 
-          SUM(incident_count) as total_incidents,
-          SUM(resolved_count) as total_resolved,
-          SUM(acknowledged_count) as total_acknowledged,
-          -- Weighted average for MTTR (weight by resolved incidents)
-          CASE 
-            WHEN SUM(resolved_count) > 0 THEN
-              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
-            ELSE NULL
-          END as avg_resolution_minutes,
-          -- Weighted average for MTTA (weight by acknowledged incidents)
-          CASE 
-            WHEN SUM(acknowledged_count) > 0 THEN
-              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
-            ELSE NULL
-          END as avg_acknowledgment_minutes
-        FROM alert_analytics_hourly
+          COUNT(*) as total_incidents,
+          COUNT(*) FILTER (WHERE status = 'resolved') as total_resolved,
+          COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) as total_acknowledged,
+          -- MTTR calculation (only resolved incidents)
+          AVG(EXTRACT(EPOCH FROM (incident_end - incident_start)) / 60) 
+            FILTER (WHERE status = 'resolved' AND incident_end IS NOT NULL) as avg_resolution_minutes,
+          -- MTTA calculation (ALL incidents - use acknowledged_at or NOW())
+          AVG(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as avg_acknowledgment_minutes
+        FROM alert_incidents
         WHERE service_namespace = $1 
           AND service_name = $2
-          AND hour >= $3
+          AND incident_start >= $3
       `, [namespace, serviceName, cutoff]);
 
-      // Get breakdown by severity
+      // Get breakdown by severity - query alert_incidents directly  
       const severityResult = await client.query(`
         SELECT 
           severity,
-          SUM(incident_count) as incident_count,
-          SUM(resolved_count) as resolved_count,
-          SUM(acknowledged_count) as acknowledged_count,
-          CASE 
-            WHEN SUM(resolved_count) > 0 THEN
-              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
-            ELSE NULL
-          END as avg_duration_minutes,
-          CASE 
-            WHEN SUM(acknowledged_count) > 0 THEN
-              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
-            ELSE NULL
-          END as avg_acknowledgment_minutes
-        FROM alert_analytics_hourly
+          COUNT(*) as incident_count,
+          COUNT(*) FILTER (WHERE status = 'resolved') as resolved_count,
+          COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) as acknowledged_count,
+          -- MTTR by severity (only resolved incidents)
+          AVG(EXTRACT(EPOCH FROM (incident_end - incident_start)) / 60) 
+            FILTER (WHERE status = 'resolved' AND incident_end IS NOT NULL) as avg_duration_minutes,
+          -- MTTA by severity (ALL incidents)
+          AVG(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as avg_acknowledgment_minutes
+        FROM alert_incidents
         WHERE service_namespace = $1 
           AND service_name = $2
-          AND hour >= $3
+          AND incident_start >= $3
         GROUP BY severity
         ORDER BY 
           CASE severity 
@@ -772,12 +802,12 @@ export function createAlertsRoutes(pool: Pool): Router {
         },
         mttr: {
           average_minutes: analytics.avg_resolution_minutes ? 
-            Math.round(parseFloat(analytics.avg_resolution_minutes)) : null,
+            parseFloat(analytics.avg_resolution_minutes) : null,
           resolved_count: parseInt(analytics.total_resolved) || 0
         },
         mtta: {
           average_minutes: analytics.avg_acknowledgment_minutes ? 
-            Math.round(parseFloat(analytics.avg_acknowledgment_minutes)) : null,
+            parseFloat(analytics.avg_acknowledgment_minutes) : null,
           acknowledged_count: parseInt(analytics.total_acknowledged) || 0
         },
         severity_breakdown: severityResult.rows.map(row => ({
@@ -786,9 +816,9 @@ export function createAlertsRoutes(pool: Pool): Router {
           resolved_count: parseInt(row.resolved_count),
           acknowledged_count: parseInt(row.acknowledged_count),
           avg_resolution_minutes: row.avg_duration_minutes ? 
-            Math.round(parseFloat(row.avg_duration_minutes)) : null,
+            parseFloat(row.avg_duration_minutes) : null,
           avg_acknowledgment_minutes: row.avg_acknowledgment_minutes ? 
-            Math.round(parseFloat(row.avg_acknowledgment_minutes)) : null
+            parseFloat(row.avg_acknowledgment_minutes) : null
         }))
       });
       
@@ -811,76 +841,62 @@ export function createAlertsRoutes(pool: Pool): Router {
       
       req.log.debug({ namespace, hours }, 'Getting namespace analytics');
       
-      // Use materialized view for efficient aggregation
+      // Query alert_incidents directly with corrected MTTA calculation (whole DB)
       const analyticsResult = await client.query(`
         SELECT 
-          SUM(incident_count) as total_incidents,
-          SUM(resolved_count) as total_resolved,
-          SUM(acknowledged_count) as total_acknowledged,
+          COUNT(*) as total_incidents,
+          COUNT(*) FILTER (WHERE status = 'resolved') as total_resolved,
+          COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) as total_acknowledged,
           COUNT(DISTINCT service_name) as affected_services,
-          -- Weighted average for MTTR
-          CASE 
-            WHEN SUM(resolved_count) > 0 THEN
-              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
-            ELSE NULL
-          END as avg_resolution_minutes,
-          -- Weighted average for MTTA
-          CASE 
-            WHEN SUM(acknowledged_count) > 0 THEN
-              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
-            ELSE NULL
-          END as avg_acknowledgment_minutes
-        FROM alert_analytics_hourly
-        WHERE service_namespace = $1 
-          AND hour >= $2
-      `, [namespace, cutoff]);
+          -- MTTR calculation (only resolved incidents)
+          AVG(EXTRACT(EPOCH FROM (incident_end - incident_start)) / 60) 
+            FILTER (WHERE status = 'resolved' AND incident_end IS NOT NULL) as avg_resolution_minutes,
+          -- MTTA calculation (ALL incidents - use acknowledged_at or NOW())
+          AVG(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as avg_acknowledgment_minutes
+        FROM alert_incidents
+        WHERE service_namespace = $1
+      `, [namespace]);
 
-      // Get top services by incident count
+      // Get top services by incident count - query alert_incidents directly
       const topServicesResult = await client.query(`
         SELECT 
           service_name,
-          SUM(incident_count) as total_incidents,
-          SUM(resolved_count) as total_resolved,
-          SUM(acknowledged_count) as total_acknowledged,
-          CASE 
-            WHEN SUM(resolved_count) > 0 THEN
-              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
-            ELSE NULL
-          END as avg_resolution_minutes,
-          CASE 
-            WHEN SUM(acknowledged_count) > 0 THEN
-              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
-            ELSE NULL
-          END as avg_acknowledgment_minutes
-        FROM alert_analytics_hourly
-        WHERE service_namespace = $1 
-          AND hour >= $2
+          COUNT(*) as total_incidents,
+          COUNT(*) FILTER (WHERE status = 'resolved') as total_resolved,
+          COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) as total_acknowledged,
+          -- MTTR by service (only resolved incidents)
+          AVG(EXTRACT(EPOCH FROM (incident_end - incident_start)) / 60) 
+            FILTER (WHERE status = 'resolved' AND incident_end IS NOT NULL) as avg_resolution_minutes,
+          -- MTTA by service (ALL incidents)
+          AVG(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as avg_acknowledgment_minutes
+        FROM alert_incidents
+        WHERE service_namespace = $1
         GROUP BY service_name
-        HAVING SUM(incident_count) > 0
-        ORDER BY SUM(incident_count) DESC
+        HAVING COUNT(*) > 0
+        ORDER BY COUNT(*) DESC
         LIMIT 10
-      `, [namespace, cutoff]);
+      `, [namespace]);
 
-      // Get severity breakdown
+      // Get severity breakdown - query alert_incidents directly
       const severityResult = await client.query(`
         SELECT 
           severity,
-          SUM(incident_count) as incident_count,
-          SUM(resolved_count) as resolved_count,
-          SUM(acknowledged_count) as acknowledged_count,
-          CASE 
-            WHEN SUM(resolved_count) > 0 THEN
-              SUM(avg_duration_minutes * resolved_count) / SUM(resolved_count)
-            ELSE NULL
-          END as avg_duration_minutes,
-          CASE 
-            WHEN SUM(acknowledged_count) > 0 THEN
-              SUM(avg_acknowledgment_minutes * acknowledged_count) / SUM(acknowledged_count)
-            ELSE NULL
-          END as avg_acknowledgment_minutes
-        FROM alert_analytics_hourly
-        WHERE service_namespace = $1 
-          AND hour >= $2
+          COUNT(*) as incident_count,
+          COUNT(*) FILTER (WHERE status = 'resolved') as resolved_count,
+          COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) as acknowledged_count,
+          -- MTTR by severity (only resolved incidents)
+          AVG(EXTRACT(EPOCH FROM (incident_end - incident_start)) / 60) 
+            FILTER (WHERE status = 'resolved' AND incident_end IS NOT NULL) as avg_duration_minutes,
+          -- MTTA by severity (ALL incidents)
+          AVG(EXTRACT(EPOCH FROM (
+            COALESCE(acknowledged_at, NOW()) - incident_start
+          )) / 60) as avg_acknowledgment_minutes
+        FROM alert_incidents
+        WHERE service_namespace = $1
         GROUP BY severity
         ORDER BY 
           CASE severity 
@@ -889,7 +905,7 @@ export function createAlertsRoutes(pool: Pool): Router {
             WHEN 'warning' THEN 3 
             WHEN 'none' THEN 4 
           END
-      `, [namespace, cutoff]);
+      `, [namespace]);
 
       const analytics = analyticsResult.rows[0];
 
@@ -922,7 +938,7 @@ export function createAlertsRoutes(pool: Pool): Router {
           avg_resolution_minutes: row.avg_resolution_minutes ? 
             Math.round(parseFloat(row.avg_resolution_minutes)) : null,
           avg_acknowledgment_minutes: row.avg_acknowledgment_minutes ? 
-            Math.round(parseFloat(row.avg_acknowledgment_minutes)) : null
+            parseFloat(row.avg_acknowledgment_minutes) : null
         })),
         severity_breakdown: severityResult.rows.map(row => ({
           severity: row.severity,
@@ -930,9 +946,9 @@ export function createAlertsRoutes(pool: Pool): Router {
           resolved_count: parseInt(row.resolved_count),
           acknowledged_count: parseInt(row.acknowledged_count),
           avg_resolution_minutes: row.avg_duration_minutes ? 
-            Math.round(parseFloat(row.avg_duration_minutes)) : null,
+            parseFloat(row.avg_duration_minutes) : null,
           avg_acknowledgment_minutes: row.avg_acknowledgment_minutes ? 
-            Math.round(parseFloat(row.avg_acknowledgment_minutes)) : null
+            parseFloat(row.avg_acknowledgment_minutes) : null
         }))
       });
       

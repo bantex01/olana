@@ -103,8 +103,10 @@ export interface UseServiceHealthReturn {
   loading: boolean;
   error: string | null;
   acknowledgingAlerts: Set<number>;
+  resolvingAlerts: Set<number>;
   fetchServiceGroups: (filters: GraphFilters) => Promise<void>;
   acknowledgeAlert: (alertId: number) => Promise<void>;
+  resolveAlert: (alertId: number) => Promise<void>;
   lastUpdated: Date | null;
 }
 
@@ -115,6 +117,7 @@ export const useServiceHealth = (): UseServiceHealthReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acknowledgingAlerts, setAcknowledgingAlerts] = useState<Set<number>>(new Set());
+  const [resolvingAlerts, setResolvingAlerts] = useState<Set<number>>(new Set());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchServiceGroups = useCallback(async (filters: GraphFilters) => {
@@ -250,14 +253,68 @@ export const useServiceHealth = (): UseServiceHealthReturn => {
     }
   }, [allAlerts]);
 
+  const resolveAlert = useCallback(async (alertId: number) => {
+    try {
+      setResolvingAlerts(prev => new Set(prev).add(alertId));
+      
+      const response = await fetch(`${API_BASE_URL}/alerts/${alertId}/resolve`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      await response.json();
+      
+      // Remove the resolved alert from state since Service Health only shows open alerts
+      setAllAlerts(prevAlerts => 
+        prevAlerts.filter(alert => alert.alert_id !== alertId)
+      );
+
+      // Remove the resolved alert from service groups
+      setServiceGroups(prevGroups => 
+        prevGroups.map(group => ({
+          ...group,
+          alerts: group.alerts.filter(alert => alert.alert_id !== alertId),
+          alertCount: group.alerts.filter(alert => alert.alert_id !== alertId).length
+        })).filter(group => group.alertCount > 0) // Remove service groups with no alerts
+      );
+
+      // Recalculate performance metrics after removing resolved alert
+      const updatedAlerts = allAlerts.filter(alert => alert.alert_id !== alertId);
+      const mtta = calculateMTTA(updatedAlerts);
+      const mttr = calculateMTTR(updatedAlerts);
+      setPerformanceMetrics({ mtta, mttr });
+
+      message.success('Alert resolved successfully');
+      logger.info(`Alert ${alertId} resolved successfully`);
+
+    } catch (error) {
+      logger.error(`Failed to resolve alert ${alertId}:`, error);
+      message.error('Failed to resolve alert. Please try again.');
+    } finally {
+      setResolvingAlerts(prev => {
+        const next = new Set(prev);
+        next.delete(alertId);
+        return next;
+      });
+    }
+  }, [allAlerts]);
+
   return {
     serviceGroups,
     performanceMetrics,
     loading,
     error,
     acknowledgingAlerts,
+    resolvingAlerts,
     fetchServiceGroups,
     acknowledgeAlert,
+    resolveAlert,
     lastUpdated,
   };
 };

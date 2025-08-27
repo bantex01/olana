@@ -240,29 +240,6 @@ export function createAdminRoutes(pool: Pool, serviceCleanup: ServiceCleanup, cl
     }
   });
 
-  // Refresh analytics materialized view
-  router.post("/admin/incidents/refresh-analytics", async (req, res) => {
-    try {
-      const client = await pool.connect();
-      
-      try {
-        await client.query('REFRESH MATERIALIZED VIEW alert_analytics_hourly');
-        
-        res.json({
-          status: "ok",
-          message: "Analytics materialized view refreshed successfully",
-          timestamp: new Date().toISOString()
-        });
-
-      } finally {
-        client.release();
-      }
-      
-    } catch (error) {
-      req.log.error({ error }, 'Analytics refresh failed');
-      res.status(500).json({ error: "Failed to refresh analytics" });
-    }
-  });
 
   return router;
 }

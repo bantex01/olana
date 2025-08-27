@@ -35,8 +35,10 @@ export const ServiceHealth: React.FC = () => {
     loading: servicesLoading, 
     error: servicesError, 
     acknowledgingAlerts,
+    resolvingAlerts,
     fetchServiceGroups,
-    acknowledgeAlert
+    acknowledgeAlert,
+    resolveAlert
   } = useServiceHealth();
 
   // Acknowledgment filter state
@@ -304,7 +306,9 @@ export const ServiceHealth: React.FC = () => {
         sortConfig={filterState.sortConfig}
         loading={servicesLoading}
         onAcknowledgeAlert={acknowledgeAlert}
+        onResolveAlert={resolveAlert}
         acknowledgingAlerts={acknowledgingAlerts}
+        resolvingAlerts={resolvingAlerts}
       />
     </div>
   );
