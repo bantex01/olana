@@ -13,7 +13,6 @@ export const MTTALast24hCard: React.FC<MTTALast24hCardProps> = ({
   value, 
   suffix = "min",
   loading = false,
-  isPlaceholder = false
 }) => {
   return (
     <Card size="small" loading={loading}>
