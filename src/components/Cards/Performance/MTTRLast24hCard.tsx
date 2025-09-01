@@ -13,7 +13,6 @@ export const MTTRLast24hCard: React.FC<MTTRLast24hCardProps> = ({
   value, 
   suffix = "min",
   loading = false,
-  isPlaceholder = false
 }) => {
   return (
     <Card size="small" loading={loading}>
@@ -24,16 +23,6 @@ export const MTTRLast24hCard: React.FC<MTTRLast24hCardProps> = ({
         prefix={<HistoryOutlined />}
         valueStyle={{ color: '#1890ff', fontSize: '20px' }}
       />
-      {isPlaceholder && (
-        <div style={{ 
-          fontSize: '11px', 
-          color: '#a0a6b8', 
-          fontStyle: 'italic',
-          marginTop: '4px' 
-        }}>
-          Placeholder data only
-        </div>
-      )}
     </Card>
   );
 };
