@@ -24,16 +24,6 @@ export const MTTALast24hCard: React.FC<MTTALast24hCardProps> = ({
         prefix={<ClockCircleOutlined />}
         valueStyle={{ color: '#52c41a', fontSize: '20px' }}
       />
-      {isPlaceholder && (
-        <div style={{ 
-          fontSize: '11px', 
-          color: '#a0a6b8', 
-          fontStyle: 'italic',
-          marginTop: '4px' 
-        }}>
-          Placeholder data only
-        </div>
-      )}
     </Card>
   );
 };
