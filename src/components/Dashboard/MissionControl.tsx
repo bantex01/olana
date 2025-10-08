@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import { AlertsFilters } from '../Incidents/AlertsFilters';
 import { ServiceMapEasy } from '../ServiceMap';
-import { AlertTimeChart } from './AlertTimeChart';
+import { AlertTimeline } from '../Charts';
 import { useFilterState } from '../../hooks/useFilterState';
 import { useServiceMapData } from '../../hooks/useServiceMapData';
 import { useAnalytics } from '../../hooks/useAnalytics';
@@ -265,8 +265,19 @@ export const MissionControl: React.FC<MissionControlProps> = ({ onLastUpdatedCha
         />
       </div>
 
-      {/* Alert Timeline Chart (EXACTLY like original) */}
-      <AlertTimeChart loading={data.loading} />
+      {/* Alert Timeline Chart - Professional Recharts Implementation */}
+      <AlertTimeline
+        filters={filters}
+        config={{
+          height: '300px',
+          showStyleSelector: true,
+          showRefresh: true,
+          timeRange: 24,
+          refreshInterval: 0
+        }}
+        loading={data.loading}
+        onRefresh={handleRefresh}
+      />
       
       {/* Enhanced Service Map - Using ServiceMapEasy (REPLACES original complex setup) */}
       <Collapse
