@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Row, Col, Card, Typography, Button, Modal } from 'antd';
 import { ExpandOutlined } from '@ant-design/icons';
 import { ServiceMapEasy } from '../ServiceMap';
-import { AlertTimeChart } from '../Dashboard/AlertTimeChart';
+import { AlertTimeline } from '../Charts';
 import { ThemedExpandedAlerts } from './ThemedExpandedAlerts';
 import { ServiceDetailsPanel } from './ServiceDetailsPanel';
 import { useFilterState } from '../../hooks/useFilterState';
@@ -158,12 +158,12 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
             size="small"
             style={{ 
               backgroundColor: 'var(--bg-primary)',
-              height: '280px'
+              height: '380px'
             }}
             styles={{ 
               body: { 
                 padding: '12px',
-                height: '220px',
+                height: '320px',
                 overflow: 'hidden'
               }
             }}
@@ -173,7 +173,20 @@ export const RichServiceDrillDown: React.FC<RichServiceDrillDownProps> = ({
               width: '100%',
               overflow: 'hidden'
             }}>
-              <AlertTimeChart loading={false} />
+              <AlertTimeline
+            filters={{
+              namespaces: [serviceGroup.serviceNamespace],
+              severities: filterState.selectedSeverities,
+              tags: filterState.selectedTags,
+              search: serviceGroup.serviceName // Filter by the specific service name
+            }}
+            config={{
+              height: '300px',
+              showStyleSelector: true,
+              showRefresh: true,
+              timeRange: 24
+            }}
+          />
             </div>
           </Card>
         </Col>

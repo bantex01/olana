@@ -448,8 +448,57 @@ export function createAlertsRoutes(pool: Pool): Router {
     const client = await pool.connect();
     
     try {
-      const hours = parseInt(req.query.hours as string) || 24;
-      const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
+      // Support both old 'hours' parameter and new 'startDate'/'endDate' parameters
+      let startDate: Date;
+      let endDate: Date;
+      
+      if (req.query.startDate && req.query.endDate) {
+        startDate = new Date(req.query.startDate as string);
+        endDate = new Date(req.query.endDate as string);
+        
+        // Validate dates
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          return res.status(400).json({ error: "Invalid start or end date format" });
+        }
+        
+        if (startDate >= endDate) {
+          return res.status(400).json({ error: "Start date must be before end date" });
+        }
+      } else {
+        // Fall back to hours-based logic for backward compatibility
+        const hours = parseInt(req.query.hours as string) || 24;
+        endDate = new Date();
+        startDate = new Date(Date.now() - (hours * 60 * 60 * 1000));
+      }
+      
+      const cutoff = startDate; // Maintain existing variable name for compatibility
+      const calculatedHours = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60));
+      
+      // Determine aggregation interval based on time range
+      let truncateInterval: string;
+      let intervalLabel: string;
+      
+      if (calculatedHours <= 2) {
+        truncateInterval = 'minute'; // 1-2 hours: minute by minute
+        intervalLabel = 'minute';
+      } else if (calculatedHours <= 12) {
+        truncateInterval = '5 minutes'; // 2-12 hours: 5-minute intervals  
+        intervalLabel = '5-minute';
+      } else if (calculatedHours <= 48) {
+        truncateInterval = 'hour'; // 2-48 hours: hourly
+        intervalLabel = 'hourly';
+      } else if (calculatedHours <= 168) {
+        truncateInterval = '6 hours'; // 2-7 days: 6-hour intervals
+        intervalLabel = '6-hour';
+      } else if (calculatedHours <= 720) {
+        truncateInterval = 'day'; // 7-30 days: daily
+        intervalLabel = 'daily';
+      } else {
+        truncateInterval = 'week'; // 30+ days: weekly
+        intervalLabel = 'weekly';
+      }
+      
+      req.log.debug({ calculatedHours, truncateInterval, intervalLabel }, 'Using dynamic aggregation interval');
       
       // Parse filters (same as alerts endpoint)
       const filters: any = {};
@@ -458,12 +507,12 @@ export function createAlertsRoutes(pool: Pool): Router {
       if (req.query.severities) filters.severities = (req.query.severities as string).split(',');
       if (req.query.search) filters.search = req.query.search as string;
       
-      req.log.debug({ hours, filters }, 'Getting analytics with filters');
+      req.log.debug({ startDate, endDate, filters }, 'Getting analytics with filters');
       
       // Build WHERE conditions based on filters
-      const whereConditions: string[] = ['incident_start >= $1'];
-      const params: any[] = [cutoff];
-      let paramIndex = 2;
+      const whereConditions: string[] = ['incident_start >= $1 AND incident_start <= $2'];
+      const params: any[] = [startDate, endDate];
+      let paramIndex = 3;
       
       if (filters.namespaces && filters.namespaces.length > 0) {
         const placeholders = filters.namespaces.map(() => `$${paramIndex++}`).join(', ');
@@ -544,7 +593,7 @@ export function createAlertsRoutes(pool: Pool): Router {
         HAVING COUNT(*) > 1
         ORDER BY incident_count DESC 
         LIMIT 10
-      `, [...params, hours]);
+      `, [...params, calculatedHours]);
 
       // Severity breakdown
       const severityResult = await client.query(`
@@ -565,17 +614,20 @@ export function createAlertsRoutes(pool: Pool): Router {
           END
       `, params);
 
-      // Hourly incident distribution
-      const hourlyResult = await client.query(`
+      // Dynamic time-based incident distribution with severity breakdown
+      const timeDistributionResult = await client.query(`
         SELECT 
-          DATE_TRUNC('hour', incident_start) as hour,
+          DATE_TRUNC('${truncateInterval}', incident_start) as time_bucket,
           COUNT(*) as incidents,
-          COUNT(DISTINCT service_namespace || '::' || service_name) as services_affected
+          COUNT(DISTINCT service_namespace || '::' || service_name) as services_affected,
+          COUNT(*) FILTER (WHERE severity = 'fatal') as fatal_count,
+          COUNT(*) FILTER (WHERE severity = 'critical') as critical_count,
+          COUNT(*) FILTER (WHERE severity = 'warning') as warning_count,
+          COUNT(*) FILTER (WHERE severity = 'none') as none_count
         FROM alert_incidents 
         WHERE ${whereClause}
-        GROUP BY DATE_TRUNC('hour', incident_start)
-        ORDER BY hour DESC
-        LIMIT 24
+        GROUP BY DATE_TRUNC('${truncateInterval}', incident_start)
+        ORDER BY time_bucket DESC
       `, params);
 
       const counts = countsResult.rows[0];
@@ -583,7 +635,7 @@ export function createAlertsRoutes(pool: Pool): Router {
       const mtta = mttaResult.rows[0];
 
       res.json({
-        time_range_hours: hours,
+        time_range_hours: calculatedHours,
         summary: {
           total_incidents: parseInt(counts.total_incidents),
           active_incidents: parseInt(counts.active_incidents),
@@ -617,16 +669,24 @@ export function createAlertsRoutes(pool: Pool): Router {
           active: parseInt(row.active),
           resolved: parseInt(row.resolved)
         })),
-        hourly_distribution: hourlyResult.rows.map(row => ({
-          hour: row.hour,
+        time_distribution: timeDistributionResult.rows.map(row => ({
+          time_bucket: row.time_bucket,
           incidents: parseInt(row.incidents),
-          services_affected: parseInt(row.services_affected)
-        }))
+          services_affected: parseInt(row.services_affected),
+          fatal_count: parseInt(row.fatal_count),
+          critical_count: parseInt(row.critical_count),
+          warning_count: parseInt(row.warning_count),
+          none_count: parseInt(row.none_count)
+        })),
+        aggregation_interval: intervalLabel
       });
-      
+
+      return;
+
     } catch (error) {
       req.log.error({ error }, 'Analytics error');
       res.status(500).json({ error: "Failed to fetch analytics" });
+      return;
     } finally {
       client.release();
     }
