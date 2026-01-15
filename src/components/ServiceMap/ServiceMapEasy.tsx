@@ -112,13 +112,14 @@ export const ServiceMapEasy: React.FC<ServiceMapEasyProps> = ({
       lastUpdated={new Date()}
       includeDependentNamespaces={filterState.includeDependentNamespaces}
       showFullChain={filterState.showFullChain}
+      filters={filters}
       onRefresh={handleRefresh}
       onIncludeDependentNamespacesChange={handleIncludeDependentNamespacesChange}
       onShowFullChainChange={handleShowFullChainChange}
       config={{
         height: config.height || '400px',
         showControls: config.showControls !== false, // Default true
-        showHeader: config.showHeader !== false,     // Default true  
+        showHeader: config.showHeader !== false,     // Default true
         showLegend: config.showLegend !== false,     // Default true
         enableFocusMode: config.enableFocusMode !== false,
         enableRefresh: config.enableRefresh !== false,

@@ -56,8 +56,8 @@ export const ServiceAlertSummaryTable: React.FC<ServiceAlertSummaryTableProps> =
       }
       
       const service = serviceMap.get(serviceId)!;
-      // For now, all alerts are "open" since acknowledged status doesn't exist yet
-      const isAcknowledged = false; // Will be: alert.status === 'acknowledged' when implemented
+      // Check if alert is acknowledged based on acknowledged_at field
+      const isAcknowledged = !!alert.acknowledged_at;
       
       // Count by severity
       switch (alert.severity) {
@@ -78,13 +78,17 @@ export const ServiceAlertSummaryTable: React.FC<ServiceAlertSummaryTableProps> =
       service.total++;
     });
     
-    // Determine status for each service and add demo deployment data
+    // Determine status for each service based on ALL firing alerts (acknowledged + unacknowledged)
     serviceMap.forEach(service => {
-      if (service.fatal.open > 0) {
+      const totalFatal = service.fatal.open + service.fatal.acknowledged;
+      const totalCritical = service.critical.open + service.critical.acknowledged;
+      const totalWarning = service.warning.open + service.warning.acknowledged;
+
+      if (totalFatal > 0) {
         service.status = 'fatal';
-      } else if (service.critical.open > 0) {
+      } else if (totalCritical > 0) {
         service.status = 'critical';
-      } else if (service.warning.open > 0) {
+      } else if (totalWarning > 0) {
         service.status = 'warning';
       } else {
         service.status = 'healthy';

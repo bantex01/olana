@@ -31,6 +31,12 @@ export interface ServiceMapProps {
   includeDependentNamespaces?: boolean;
   showFullChain?: boolean;
   config?: ServiceMapConfig;
+  filters?: {
+    namespaces?: string[];
+    severities?: string[];
+    tags?: string[];
+    search?: string;
+  };
   onRefresh?: () => void;
   onIncludeDependentNamespacesChange?: (include: boolean) => void;
   onShowFullChainChange?: (show: boolean) => void;
@@ -52,16 +58,17 @@ interface EnhancedEdge extends Omit<Edge, 'dashes'> {
   dashes?: boolean | number[];
 }
 
-export const ServiceMap: React.FC<ServiceMapProps> = ({ 
-  alerts, 
-  nodes, 
-  edges, 
-  loading = false, 
+export const ServiceMap: React.FC<ServiceMapProps> = ({
+  alerts,
+  nodes,
+  edges,
+  loading = false,
   totalServices = 0,
   lastUpdated,
   includeDependentNamespaces = false,
   showFullChain = false,
   config = {},
+  filters,
   onRefresh,
   onIncludeDependentNamespacesChange,
   onShowFullChainChange
@@ -98,7 +105,23 @@ export const ServiceMap: React.FC<ServiceMapProps> = ({
   
   // Interactive controls state
   const [showServices, setShowServices] = useState(mapConfig.defaultShowServices);
-  const [showNamespaces, setShowNamespaces] = useState(mapConfig.defaultShowNamespaces);
+  // Automatically enable "Show Namespaces" when ANY filters are applied for better UX
+  const hasAnyFilters = !!(
+    (filters?.namespaces && filters.namespaces.length > 0) ||
+    (filters?.severities && filters.severities.length > 0) ||
+    (filters?.tags && filters.tags.length > 0) ||
+    (filters?.search && filters.search.trim() !== '')
+  );
+  const [showNamespaces, setShowNamespaces] = useState(hasAnyFilters || mapConfig.defaultShowNamespaces);
+
+  // Update showNamespaces bidirectionally when filters change
+  useEffect(() => {
+    if (hasAnyFilters) {
+      setShowNamespaces(true);  // Enable when filters are applied
+    } else {
+      setShowNamespaces(mapConfig.defaultShowNamespaces); // Revert to default when no filters
+    }
+  }, [hasAnyFilters, mapConfig.defaultShowNamespaces]);
   const [focusMode, setFocusMode] = useState(false);
   const [layoutStyle, setLayoutStyle] = useState<'hierarchical' | 'static' | 'clustered'>(mapConfig.defaultLayout);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(false);
